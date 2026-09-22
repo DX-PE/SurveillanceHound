@@ -1,76 +1,119 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Surveillance Hound
 
-An offline ESP32 radio-observation pet for the LCDWiki E32R40T. This is the **initial 0.1.0 development implementation**, not a hardware-validated release.
+An offline ESP32 radio-observation pet for the **LCDWiki E32R40T**: six dogs, passive Wi-Fi/Bluetooth clues, and local logs. This is a **0.1.0 development build**. The ESP32-C3 radio test has passed; the display board's physical acceptance tests remain pending.
 
 ![Firmware UI rendered on the host](docs/ui-preview.png)
 
-[Sleeping hound and new settings preview](docs/ui-features.png)
+[Sleeping hound and settings preview](docs/ui-features.png)
 
-The firmware uses passive Wi-Fi management reception and passive legacy BLE scanning. It never associates, probes, advertises, injects frames, or uploads data. A radio match describes evidence, not intent or proof of surveillance.
+The application uses passive Wi-Fi management reception and passive legacy BLE scanning. It does not associate, probe, advertise, inject frames, or upload observations. A match describes radio evidence, not intent or proof of surveillance.
 
-## What works in this implementation
+## Current features
 
-- Native ESP-IDF **6.0.2**, pinned to commit `7101770dc6db2667b3c477cc31365dd1acd6db4e`; C++20 portable core and native board drivers.
-- ST7796 SPI display, XPT2046 three-point affine calibration, separate SD SPI bus, backlight, LED, BOOT fallback, battery ADC, optional quiet audio.
-- Six original dogs (Corgi, Beagle, Shiba, Husky, Labrador, Dalmatian), 33 RLE frames each, onboarding, naming, home, observations, evidence details, detector controls, settings and diagnostics. A neon patrol scene, touch reactions, side-facing walk-and-eat snack sequences and themed alerts share one bounded tile buffer. Landscape (480 × 320) is the default, with a portrait layout and rotation lock in Settings.
-- Bounded frame parsing, confidence fusion, 128-entry aggregation and meal caches, cooldowns, per-category limits, persisted recent meals and pet state.
-- 67 enabled rules covering all 19 categories, including Samsung/Tile/Find My services, Flipper, Flock, vendor clues, structured Pwnagotchi, legacy Remote ID assembly and behavior heuristics. Product accuracy remains subject to field validation. See [DETECTIONS](docs/DETECTIONS.md).
-- Private session HMAC identifiers, opt-in raw local MAC logging, rotated JSONL, complete-row validation, partial-tail recovery, full-history SD export, and a complete offline historical export tool.
-- Start/Stop sniffing with sleeping Zs; themed food for every category; 32-entry paged history; manual UTC; battery calibration; SD-space diagnostics; confirmed log clearing and touch/display self-test.
-- Deterministic generators with enforced provenance, host regression and fuzz tests, UI previews, build profiles, CI, development binary packaging and an SPDX source inventory.
+- **Six original dogs:** Corgi, Beagle, Shiba, Husky, Labrador and Dalmatian, with 33 animation frames each, naming, pet progress, touch reactions and level-up celebrations.
+- **Landscape by default:** 480 × 320, with a 320 × 480 portrait layout and persistent rotation lock. Rotation is manual; the board has no orientation sensor.
+- **Start/Stop sniffing:** the home-screen button pauses reception and puts the hound to sleep with floating Zs. Start wakes the hound and resumes reception. Both button labels fit within the display.
+- **Snacks for all 19 categories:** the hound turns sideways, walks up, takes progressive bites and finishes happy. Reduced-animation mode is available.
+- **67 enabled rules:** Flock, Axon, glasses, skimmer modules, Raven, Apple Find My/AirTag, Tile, Samsung Tag, Google Tag, Drone, ALPR, Camera, Ring, iBeacon, Flipper, Pwnagotchi, Pineapple, deauth bursts and possible evil twins. Vendor, name and generic-service clues retain conservative confidence limits; see [detection coverage and limitations](docs/DETECTIONS.md).
+- **Bounded detection:** 128-entry observation and meal caches, confidence fusion, cooldowns, probe-request parsing, 128-bit BLE UUIDs, structured uncompressed Pwnagotchi advertisements, legacy Remote ID assembly and corroborated Wi-Fi security differences.
+- **Evidence and controls:** 32 recent events paged four at a time, frozen evidence details, separate detector and alert switches, and volatile Remote ID details when received.
+- **Local storage and privacy:** private HMAC identifiers by default, opt-in raw local MAC logging, rotated JSONL, complete-row validation, incomplete-tail recovery, corrupt-log write lockout, full-history export and confirmed log deletion.
+- **Device settings:** manual UTC, three-point battery calibration, optional voltage/estimated percentage, critical save/flush/sleep, brightness and muted-by-default audio effects.
+- **Diagnostics:** per-radio accepted/malformed counts, queue drops, task watermarks, heap, SD space, raw ADC and display/touch self-test.
 
-## Try it without hardware
+Firmware uses native **ESP-IDF 6.0.2**, pinned to `7101770dc6db2667b3c477cc31365dd1acd6db4e`, a C++20 portable core, and project-owned ST7796 display/XPT2046 touch drivers. Release, debug, test and demo build profiles are included.
 
-Python 3.11+, CMake 3.22+, Ninja, a C++20 compiler and OpenSSL development headers are required. On Debian/Ubuntu: `build-essential cmake ninja-build libssl-dev python3-venv`.
+## Run the local simulator
+
+Requirements: Python 3.11+, CMake 3.22+, Ninja, a C++20 compiler and OpenSSL development headers. Debian/Ubuntu packages: `build-essential cmake ninja-build libssl-dev python3-venv`.
+
+From the repository root:
 
 ```sh
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -r requirements-dev.txt
-cmake -S . -B build-host -G Ninja -DSNIFFER_HOST=ON -DCMAKE_BUILD_TYPE=Debug
-cmake --build build-host
-ctest --test-dir build-host --output-on-failure
-./build-host/sniffer_demo
-./build-host/ui_preview preview.ppm
-```
-
-For an interactive browser preview using the firmware renderer and touch handlers, run:
-
-```sh
 python3 tools/run_local.py
 ```
 
-Open **http://127.0.0.1:8765**. Tap **Stop sniffing** to put your hound to sleep; **Start sniffing** resumes reception. The sample selector previews all 19 snack motifs. In **Settings**, switch **Rotation lock** off to change **View** or use **TURN** in the top bar; switch it on to keep the chosen orientation. Rotation is manual because this board has no orientation sensor. **Settings → Alert types** controls pop-ups and sounds per category while sightings remain in the log; the confidence threshold still applies. The separate Detectors screen controls observation processing. Click the device screen, select a hound, walk through onboarding, and trigger synthetic detections. The simulator binds only to loopback and keeps all state in memory. Radio capture, SD storage and persistence require the physical board; synthetic events do not award real XP. Press Ctrl+C to stop. Use `--port 8766` to choose another port.
+Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/). The script builds the native firmware UI and serves it on loopback. Click the device screen, choose a hound, try onboarding, or use the sample selector to preview any category's snack. Start sniffing before sending samples if the hound is asleep.
 
-In a ptrace-based sandbox, use `ASAN_OPTIONS=detect_leaks=0 ctest ...`; address and undefined-behavior sanitizers remain enabled. Use the ordinary command outside that environment to retain leak checking.
+The browser preview uses **synthetic events and RAM-only state**, even when a C3 is connected over USB. It does not display live USB radio data, write SD logs or award saved XP. Restarting the simulator resets the session. Press Ctrl+C to stop, or use `--port 8766` for another port.
 
-## Build and flash
+| Control | Behavior |
+|---|---|
+| Home → Start/Stop sniffing | Pause/resume scanning; show the sleeping hound while stopped |
+| Settings → Rotation lock / View | Unlock, choose landscape or portrait, then lock the chosen orientation |
+| Settings → Alert types | Toggle pop-ups and sounds per category while retaining sightings; the confidence threshold still applies |
+| Detectors | Enable or disable observation processing for each category |
+| Settings → More, page 5 | Set UTC, calibrate battery, clear SD logs, run self-test or export history |
 
-Activate the exact ESP-IDF SDK, then:
+Manual UTC is marked as manual in records and resets after power loss. Battery mode defaults off; voltage and estimated percentage require a valid, explicitly enabled calibration against a meter. Power thresholds still require validation with the actual board and battery.
+
+## Build and flash the display board
+
+Use the pinned SDK and a repository path without spaces. After activating ESP-IDF:
 
 ```sh
 idf.py build
 ./tools/flash.sh /dev/ttyUSB0
 ```
 
-See [BUILDING](docs/BUILDING.md) for SDK installation, profiles and the one-command Docker build. Start hardware bring-up on USB power. The USB ESP32-C3 radio harness received Samsung FD5A advertisements and passed its Stop/Start test. The E32R40T display/touch/storage/power tests remain pending. See [C3 radio test](docs/C3_RADIO_TEST.md).
+Replace the serial port with the display board's port. See [BUILDING](docs/BUILDING.md) for SDK installation, the four profiles, Docker, and development packaging. Start bring-up on USB power. The E32R40T display, touch, SD/NVS durability, audio and battery behavior still need physical validation.
 
-## Export the card
+## Test an ESP32-C3 Super Mini
+
+The C3 has a separate **radio-only test harness** using the shared scheduler, parsers and rules. It is not the display firmware, and it is not connected to the browser preview.
+
+With the pinned SDK and its `esp32c3` toolchain installed, run from the repository root:
+
+```sh
+idf.py -C tests/c3_radio -B "$PWD/build-c3" build
+idf.py -C tests/c3_radio -B "$PWD/build-c3" -p /dev/ttyACM0 flash monitor
+```
+
+Use the C3's actual serial port and preserve its existing firmware before flashing if needed. The harness automatically pauses at 45 seconds, resumes at 65 seconds, then continues passive scanning. It reports aggregate counts, rule matches and RSSI without printing observed addresses, names or raw payloads.
+
+The recorded 100-second room test received **33 Samsung FD5A advertisements**, with zero queue drops or radio errors. Reception stopped and resumed correctly after a watchdog timing fix. A Samsung tag was reported in the room; the transmitter was not isolated as that specific tag. See the [C3 test report and original-firmware restore instructions](docs/C3_RADIO_TEST.md).
+
+## Test and verify
+
+After installing the host dependencies above:
+
+```sh
+cmake -S . -B build-host -G Ninja -DSNIFFER_HOST=ON -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-host
+ctest --test-dir build-host --output-on-failure
+./build-host/fuzz_mutate 60
+./build-host/ui_preview preview.ppm
+```
+
+The recorded verification includes successful release/debug/test/demo firmware builds, 206 core checks, 643 UI checks, 151 extended feature checks, 12 Python tests, 100,000 deterministic fuzz inputs, and 2,101,847 additional seeded mutation inputs. The final host test suite passed with address, undefined-behavior and leak checks enabled. See [VERIFICATION](docs/VERIFICATION.md) for exact scope and build hashes; the GitHub Actions workflow is provided, but no remote CI result is claimed.
+
+In a ptrace-based sandbox, LeakSanitizer may require `ASAN_OPTIONS=detect_leaks=0 ctest --test-dir build-host --output-on-failure`; retain leak detection on an ordinary host. Development packaging includes checksums, a source SPDX inventory, linked-archive evidence and retained dependency notices. Final license compatibility review remains a release gate.
+
+## Export and saved state
+
+**Settings → Export history** streams validated stored events from the SD card, retaining repeated updates, with a 4,096-file safety bound. It rekeys session IDs and observation identifiers and writes a checksum manifest only for a completed export.
+
+For an aggregated historical export, eject the card in Settings and run:
 
 ```sh
 python3 tools/export_logs.py /media/CARD/SURVSNIFF/LOGS ./community-export
 python3 tools/validate_export.py ./community-export
 ```
 
-The on-device `Export history` action streams validated stored events from all log files (4,096-file safety bound). The host command processes the full log history with disk-backed aggregation and rekeys identifiers for each export. Nothing is uploaded. See [privacy](docs/PRIVACY.md) and [export format](docs/COMMUNITY_EXPORT.md).
+Nothing is uploaded. Raw MACs, SSIDs, payloads and Remote ID serials/coordinates are excluded from sanitized exports. The device collects no GPS location. See [privacy](docs/PRIVACY.md) and [export format](docs/COMMUNITY_EXPORT.md).
 
-Saved v1 pet progress, privacy settings, recent meals and touch calibration migrate to v3 on first boot. Old cat selection slots become Husky, Labrador and Dalmatian, respectively. Simulator settings remain in memory.
+Version 1 and 2 saves migrate to version 3, preserving pet progress, privacy settings, recent meals and touch calibration. Old cat selection slots become Husky, Labrador and Dalmatian. Settings, pet and system state use CRC-protected generation slots in separate NVS namespaces. Simulator state is not persisted.
 
-The original supplied spec is retained unchanged; the Hound name, dog roster and landscape layout follow the subsequent user requests. Internal `sniffer` namespaces, build flags and on-card directory names remain stable for compatibility. New application binaries are named `surveillance_hound.bin`.
+## Remaining hardware work
 
-## Next hardware milestone
+Follow [TEST_PLAN](docs/TEST_PLAN.md), record measurements in [HARDWARE](docs/HARDWARE.md), and track readiness in [STATUS](docs/STATUS.md). Display/touch bring-up, SD/NVS power interruptions, 50 cold boots, the eight-hour soak, the 80 KB runtime heap target, measured capture loss, battery calibration/current draw and controlled product-signature captures remain outstanding.
 
-Follow [TEST_PLAN](docs/TEST_PLAN.md), record results in [HARDWARE](docs/HARDWARE.md), and close the open items in [STATUS](docs/STATUS.md). In particular, the eight-hour soak, 80 KB runtime heap target, measured capture loss, battery calibration, and controlled product-signature captures are still outstanding.
+This hardware observes 2.4 GHz Wi-Fi and legacy BLE only. It does not cover 5/6 GHz Wi-Fi, BLE extended advertising or coded PHY. Phone GPS/companion work is deferred. No cloud service, active probing, sensitive-export path or on-device rule editor is included.
 
-Firmware, tools and tests: Apache-2.0. Original documentation and art: CC-BY-4.0. Independently assembled signature facts: CC0-1.0. See [NOTICE](NOTICE), [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES.md).
+The supplied specification is retained with external project names generalized. The Hound name, all-dog roster and landscape layout reflect the later project requirements. Internal `sniffer` namespaces, build flags and on-card directory names remain stable for compatibility; display-board binaries are named `surveillance_hound.bin`.
+
+Firmware, tools and tests: Apache-2.0. Original documentation and art: CC-BY-4.0. Independently assembled signature facts: CC0-1.0, with sources and their terms recorded separately. An external detector reference was consulted for visual ideas and, with user authorization, signature facts; its implementation and assets are not incorporated. See [NOTICE](NOTICE), [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES.md) and [rule provenance](data/provenance.yaml).
