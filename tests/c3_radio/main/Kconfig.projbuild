@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+menu "Hound receive-only test"
+config SNIFFER_WIFI_DWELL_MS
+ int "Wi-Fi channel dwell"
+ default 100
+config SNIFFER_BLE_WINDOW_MS
+ int "BLE passive window"
+ default 6000
+endmenu

@@ -1,0 +1,11 @@
+{
+  "_license": "CC-BY-4.0",
+  "characters": [
+    {"name":"CORGI", "body":"E4A457", "patch":"FFF1D5", "ears":"point", "tail":0, "accent":"39DAD2"},
+    {"name":"BEAGLE", "body":"A46A43", "patch":"FFE3B0", "ears":"flop", "tail":1, "accent":"FF6EA8"},
+    {"name":"SHIBA", "body":"D77541", "patch":"FFDDB2", "ears":"point", "tail":2, "accent":"C2EE6D"},
+    {"name":"HUSKY", "body":"758BAA", "patch":"F2F2ED", "ears":"point", "tail":3, "accent":"AD88FF"},
+    {"name":"LABRADOR", "body":"E8C275", "patch":"FFE7B4", "ears":"flop", "tail":1, "accent":"FF935E"},
+    {"name":"DALMATIAN", "body":"E7E6E9", "patch":"FFFFFF", "ears":"flop", "tail":1, "accent":"4BC9FF"}
+  ]
+}

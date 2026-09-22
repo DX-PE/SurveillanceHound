@@ -1,0 +1,22 @@
+Surveillance Hound
+Copyright 2026 Surveillance Hound contributors
+
+Original firmware, tools, schemas and tests are licensed under Apache-2.0.
+Original documentation, pet art, UI glyphs, palettes and sound geometry are
+licensed under Creative Commons Attribution 4.0 International:
+https://creativecommons.org/licenses/by/4.0/
+Credit: Surveillance Hound contributors. No vendor logos are included.
+
+Independently assembled signature facts are dedicated under CC0-1.0.
+Provenance records identify original sources and their separate source terms.
+Google protocol documentation is credited to Google (CC-BY-4.0).
+STMicroelectronics is credited for public iBeacon protocol-layout documentation.
+Bluetooth SIG is credited for assigned-number facts. An external detector
+reference was consulted for signature facts under user authorization; its GPL implementation
+is not incorporated. Flock research by colonelpanichacks and contributors
+(MIT) and original protocol research informed additional factual rules.
+ESP-IDF and its upstream contributors retain their own notices and licenses.
+See THIRD_PARTY_LICENSES.md for the dependency review and remaining release work.
+
+The supplied specification is retained as user-provided requirements material.
+Brand names describe detection categories; they do not imply endorsement.

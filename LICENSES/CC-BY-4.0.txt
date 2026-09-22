@@ -1,0 +1,10 @@
+SPDX-License-Identifier: CC-BY-4.0
+
+Original documentation and artwork are licensed under Creative Commons
+Attribution 4.0 International. Attribution: Surveillance Hound contributors.
+The license's authoritative legal text is available at:
+https://creativecommons.org/licenses/by/4.0/legalcode.en
+
+You may share and adapt these works with attribution, a license link and notice
+of modifications, subject to the terms of that license. This file is a license
+notice and link, not a substitute for the full legal text.

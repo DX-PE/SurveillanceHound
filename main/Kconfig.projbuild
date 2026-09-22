@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+menu "Surveillance Hound"
+config SNIFFER_WIFI_DWELL_MS
+    int "Passive dwell per Wi-Fi channel (ms)"
+    range 150 250
+    default 200
+config SNIFFER_BLE_WINDOW_MS
+    int "Passive BLE window (ms)"
+    range 1000 1500
+    default 1200
+config SNIFFER_DEMO
+    bool "Boot directly into isolated demo mode"
+    default n
+endmenu

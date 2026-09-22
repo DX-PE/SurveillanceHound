@@ -1,0 +1,11 @@
+{
+  "_license": "CC-BY-4.0",
+  "release_approved": false,
+  "hardware_validation": "pending",
+  "eight_hour_soak": "pending",
+  "power_measurements": "pending",
+  "transitive_binary_license_audit": "linked archive/member evidence and notices packaged; final compatibility review pending",
+  "complete_spec_acceptance": "pending",
+  "usb_c3_radio": "passed short passive reception and pause/resume test; see C3_RADIO_TEST.md",
+  "software_verification": "see VERIFICATION.md"
+}

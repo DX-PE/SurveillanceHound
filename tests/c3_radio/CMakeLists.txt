@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+cmake_minimum_required(VERSION 3.22)
+set(IDF_TARGET esp32c3)
+set(COMPONENTS main)
+set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/../../components/sniffer_core" "${CMAKE_CURRENT_LIST_DIR}/../../components/radio")
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+project(hound_c3_radio_test)
+execute_process(COMMAND git -C "$ENV{IDF_PATH}" rev-parse HEAD OUTPUT_VARIABLE SDK_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT SDK_COMMIT STREQUAL "7101770dc6db2667b3c477cc31365dd1acd6db4e")
+    message(FATAL_ERROR "ESP-IDF v6.0.2 pinned commit required")
+endif()

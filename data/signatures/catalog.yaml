@@ -1,0 +1,1275 @@
+[
+  {
+    "id": "ble.google.find_hub",
+    "category": "GOOGLE_TAG",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "protocol",
+    "matcher": {
+      "value": "find_hub"
+    },
+    "score": 85,
+    "confidence_cap": "high",
+    "generic": false,
+    "vendor_label": "Find Hub network beacon",
+    "reason": "Find Hub legacy frame layout; accessory type unknown",
+    "food": "map pin",
+    "provenance_refs": [
+      "provenance.ble.google.find_hub"
+    ]
+  },
+  {
+    "id": "ble.google.fast_pair",
+    "category": "GOOGLE_TAG",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "protocol",
+    "matcher": {
+      "value": "fast_pair_model"
+    },
+    "score": 35,
+    "confidence_cap": "low",
+    "generic": false,
+    "vendor_label": "Fast Pair device clue",
+    "reason": "Fast Pair model advertisement; may be headphones, not a tracker",
+    "food": "map pin",
+    "provenance_refs": [
+      "provenance.ble.google.fast_pair"
+    ]
+  },
+  {
+    "id": "ble.ibeacon.layout",
+    "category": "IBEACON",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "protocol",
+    "matcher": {
+      "value": "ibeacon"
+    },
+    "score": 85,
+    "confidence_cap": "high",
+    "generic": false,
+    "vendor_label": "iBeacon-format broadcaster",
+    "reason": "Exact iBeacon manufacturer layout; not evidence of surveillance",
+    "food": "beacon berry",
+    "provenance_refs": [
+      "provenance.ble.ibeacon.layout"
+    ]
+  },
+  {
+    "id": "wifi.behavior.deauth",
+    "category": "DEAUTH",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "behavior",
+    "matcher": {
+      "value": "deauth_burst"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Deauth-like burst",
+    "reason": "20 deauth/disassoc frames in 10s; maintenance can cause this",
+    "food": "static snack",
+    "provenance_refs": [
+      "provenance.wifi.behavior.deauth"
+    ]
+  },
+  {
+    "id": "wifi.behavior.security",
+    "category": "EVIL_TWIN",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "behavior",
+    "matcher": {
+      "value": "security_downgrade"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Possible evil twin",
+    "reason": "Same SSID has open and protected APs; legitimate setups exist",
+    "food": "twin mask",
+    "provenance_refs": [
+      "provenance.wifi.behavior.security"
+    ]
+  },
+  {
+    "id": "wifi.flock.vendor",
+    "category": "FLOCK",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "B41E52"
+    },
+    "score": 75,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Flock vendor radio",
+    "reason": "Flock-associated vendor prefix; model unknown",
+    "food": "flock",
+    "provenance_refs": [
+      "source.wifi.flock.vendor"
+    ]
+  },
+  {
+    "id": "wifi.flock.name0",
+    "category": "FLOCK",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_ssid_prefix",
+    "matcher": {
+      "value": "Flock-"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Flock-style network",
+    "reason": "Flock-style network name; mutable and spoofable",
+    "food": "flock",
+    "provenance_refs": [
+      "source.wifi.flock.name0"
+    ]
+  },
+  {
+    "id": "wifi.flock.name1",
+    "category": "FLOCK",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_ssid_prefix",
+    "matcher": {
+      "value": "flock-"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Flock-style network",
+    "reason": "Flock-style network name; mutable and spoofable",
+    "food": "flock",
+    "provenance_refs": [
+      "source.wifi.flock.name1"
+    ]
+  },
+  {
+    "id": "wifi.flock.name2",
+    "category": "FLOCK",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_ssid_prefix",
+    "matcher": {
+      "value": "FLOCK-"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Flock-style network",
+    "reason": "Flock-style network name; mutable and spoofable",
+    "food": "flock",
+    "provenance_refs": [
+      "source.wifi.flock.name2"
+    ]
+  },
+  {
+    "id": "wifi.flock.bare",
+    "category": "FLOCK",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_ssid_exact",
+    "matcher": {
+      "value": "Flock"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Flock-style network",
+    "reason": "Flock name from firmware research",
+    "food": "flock",
+    "provenance_refs": [
+      "source.wifi.flock.bare"
+    ]
+  },
+  {
+    "id": "ble.flock.accessory",
+    "category": "FLOCK",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_uuid128",
+    "matcher": {
+      "value": "E8CCBB38953246A89FE51814DF172E6F"
+    },
+    "score": 70,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Flock accessory",
+    "reason": "Flock accessory service advertised; model unknown",
+    "food": "flock",
+    "provenance_refs": [
+      "source.ble.flock.accessory"
+    ]
+  },
+  {
+    "id": "ble.flock.battery",
+    "category": "FLOCK",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_name_exact",
+    "matcher": {
+      "value": "FS Ext Battery"
+    },
+    "score": 55,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Flock battery clue",
+    "reason": "Flock battery name; mutable and spoofable",
+    "food": "flock",
+    "provenance_refs": [
+      "source.ble.flock.battery"
+    ]
+  },
+  {
+    "id": "wifi.axon.name0",
+    "category": "AXON",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_ssid_prefix",
+    "matcher": {
+      "value": "AB2-"
+    },
+    "score": 55,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Axon-style network",
+    "reason": "Axon-style name from reference rules; field validation pending",
+    "food": "axon",
+    "provenance_refs": [
+      "source.wifi.axon.name0"
+    ]
+  },
+  {
+    "id": "wifi.axon.name1",
+    "category": "AXON",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_ssid_prefix",
+    "matcher": {
+      "value": "AB3-"
+    },
+    "score": 55,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Axon-style network",
+    "reason": "Axon-style name from reference rules; field validation pending",
+    "food": "axon",
+    "provenance_refs": [
+      "source.wifi.axon.name1"
+    ]
+  },
+  {
+    "id": "wifi.axon.name2",
+    "category": "AXON",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_ssid_prefix",
+    "matcher": {
+      "value": "AB4-"
+    },
+    "score": 55,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Axon-style network",
+    "reason": "Axon-style name from reference rules; field validation pending",
+    "food": "axon",
+    "provenance_refs": [
+      "source.wifi.axon.name2"
+    ]
+  },
+  {
+    "id": "wifi.axon.name3",
+    "category": "AXON",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_ssid_prefix",
+    "matcher": {
+      "value": "AXON-"
+    },
+    "score": 55,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Axon-style network",
+    "reason": "Axon-style name from reference rules; field validation pending",
+    "food": "axon",
+    "provenance_refs": [
+      "source.wifi.axon.name3"
+    ]
+  },
+  {
+    "id": "wifi.axon.vendor",
+    "category": "AXON",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "0025DF"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Axon/Taser radio",
+    "reason": "Axon/Taser-associated prefix; product unknown",
+    "food": "axon",
+    "provenance_refs": [
+      "source.wifi.axon.vendor"
+    ]
+  },
+  {
+    "id": "ble.glasses.meta",
+    "category": "GLASSES",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_uuid16",
+    "matcher": {
+      "value": "FD5F"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Meta service clue",
+    "reason": "Meta service; glasses attribution needs corroboration",
+    "food": "glasses",
+    "provenance_refs": [
+      "source.ble.glasses.meta"
+    ]
+  },
+  {
+    "id": "ble.skimmer.module0",
+    "category": "SKIMMER",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_name_exact",
+    "matcher": {
+      "value": "HC-03"
+    },
+    "score": 30,
+    "confidence_cap": "low",
+    "generic": true,
+    "vendor_label": "Serial module clue",
+    "reason": "Generic serial module name; does not prove a skimmer",
+    "food": "skimmer",
+    "provenance_refs": [
+      "source.ble.skimmer.module0"
+    ]
+  },
+  {
+    "id": "ble.skimmer.module1",
+    "category": "SKIMMER",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_name_exact",
+    "matcher": {
+      "value": "HC-05"
+    },
+    "score": 30,
+    "confidence_cap": "low",
+    "generic": true,
+    "vendor_label": "Serial module clue",
+    "reason": "Generic serial module name; does not prove a skimmer",
+    "food": "skimmer",
+    "provenance_refs": [
+      "source.ble.skimmer.module1"
+    ]
+  },
+  {
+    "id": "ble.skimmer.module2",
+    "category": "SKIMMER",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_name_exact",
+    "matcher": {
+      "value": "HC-06"
+    },
+    "score": 30,
+    "confidence_cap": "low",
+    "generic": true,
+    "vendor_label": "Serial module clue",
+    "reason": "Generic serial module name; does not prove a skimmer",
+    "food": "skimmer",
+    "provenance_refs": [
+      "source.ble.skimmer.module2"
+    ]
+  },
+  {
+    "id": "ble.skimmer.module3",
+    "category": "SKIMMER",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_name_exact",
+    "matcher": {
+      "value": "RN42"
+    },
+    "score": 30,
+    "confidence_cap": "low",
+    "generic": true,
+    "vendor_label": "Serial module clue",
+    "reason": "Generic serial module name; does not prove a skimmer",
+    "food": "skimmer",
+    "provenance_refs": [
+      "source.ble.skimmer.module3"
+    ]
+  },
+  {
+    "id": "ble.skimmer.module4",
+    "category": "SKIMMER",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_name_exact",
+    "matcher": {
+      "value": "BT04-A"
+    },
+    "score": 30,
+    "confidence_cap": "low",
+    "generic": true,
+    "vendor_label": "Serial module clue",
+    "reason": "Generic serial module name; does not prove a skimmer",
+    "food": "skimmer",
+    "provenance_refs": [
+      "source.ble.skimmer.module4"
+    ]
+  },
+  {
+    "id": "ble.raven.3100",
+    "category": "RAVEN",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_uuid16",
+    "matcher": {
+      "value": "3100"
+    },
+    "score": 40,
+    "confidence_cap": "low",
+    "generic": true,
+    "vendor_label": "Raven service clue",
+    "reason": "Research-associated Raven service; product unconfirmed",
+    "food": "raven",
+    "provenance_refs": [
+      "source.ble.raven.3100"
+    ]
+  },
+  {
+    "id": "ble.raven.3200",
+    "category": "RAVEN",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_uuid16",
+    "matcher": {
+      "value": "3200"
+    },
+    "score": 40,
+    "confidence_cap": "low",
+    "generic": true,
+    "vendor_label": "Raven service clue",
+    "reason": "Research-associated Raven service; product unconfirmed",
+    "food": "raven",
+    "provenance_refs": [
+      "source.ble.raven.3200"
+    ]
+  },
+  {
+    "id": "ble.raven.3300",
+    "category": "RAVEN",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_uuid16",
+    "matcher": {
+      "value": "3300"
+    },
+    "score": 40,
+    "confidence_cap": "low",
+    "generic": true,
+    "vendor_label": "Raven service clue",
+    "reason": "Research-associated Raven service; product unconfirmed",
+    "food": "raven",
+    "provenance_refs": [
+      "source.ble.raven.3300"
+    ]
+  },
+  {
+    "id": "ble.raven.3400",
+    "category": "RAVEN",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_uuid16",
+    "matcher": {
+      "value": "3400"
+    },
+    "score": 40,
+    "confidence_cap": "low",
+    "generic": true,
+    "vendor_label": "Raven service clue",
+    "reason": "Research-associated Raven service; product unconfirmed",
+    "food": "raven",
+    "provenance_refs": [
+      "source.ble.raven.3400"
+    ]
+  },
+  {
+    "id": "ble.raven.3500",
+    "category": "RAVEN",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_uuid16",
+    "matcher": {
+      "value": "3500"
+    },
+    "score": 40,
+    "confidence_cap": "low",
+    "generic": true,
+    "vendor_label": "Raven service clue",
+    "reason": "Research-associated Raven service; product unconfirmed",
+    "food": "raven",
+    "provenance_refs": [
+      "source.ble.raven.3500"
+    ]
+  },
+  {
+    "id": "ble.apple.find_my",
+    "category": "AIRTAG",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "protocol",
+    "matcher": {
+      "value": "apple_find_my"
+    },
+    "score": 75,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Apple Find My beacon",
+    "reason": "Complete Find My frame; AirTag or another Find My device",
+    "food": "airtag",
+    "provenance_refs": [
+      "source.ble.apple.find_my"
+    ]
+  },
+  {
+    "id": "ble.tile.feed",
+    "category": "TILE",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_uuid16",
+    "matcher": {
+      "value": "FEED"
+    },
+    "score": 70,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Tile service",
+    "reason": "Tile-assigned advertised service",
+    "food": "tile",
+    "provenance_refs": [
+      "source.ble.tile.feed"
+    ]
+  },
+  {
+    "id": "ble.tile.feec",
+    "category": "TILE",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_uuid16",
+    "matcher": {
+      "value": "FEEC"
+    },
+    "score": 70,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Tile service",
+    "reason": "Tile-assigned advertised service",
+    "food": "tile",
+    "provenance_refs": [
+      "source.ble.tile.feec"
+    ]
+  },
+  {
+    "id": "ble.samsung.smartthings",
+    "category": "SAMSUNG_TAG",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_uuid16",
+    "matcher": {
+      "value": "FD5A"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Samsung finding service",
+    "reason": "Samsung finding service; accessory type unconfirmed",
+    "food": "samsung_tag",
+    "provenance_refs": [
+      "source.ble.samsung.smartthings"
+    ]
+  },
+  {
+    "id": "ble.drone.remote_id",
+    "category": "DRONE",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "protocol",
+    "matcher": {
+      "value": "remote_id"
+    },
+    "score": 85,
+    "confidence_cap": "high",
+    "generic": false,
+    "vendor_label": "Remote ID broadcast",
+    "reason": "Validated Remote ID Basic ID, Location or System frame",
+    "food": "drone",
+    "provenance_refs": [
+      "source.ble.drone.remote_id"
+    ]
+  },
+  {
+    "id": "wifi.alpr.00047d",
+    "category": "ALPR",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "00047D"
+    },
+    "score": 40,
+    "confidence_cap": "low",
+    "generic": true,
+    "vendor_label": "ALPR vendor clue",
+    "reason": "Vendor makes ALPR and other equipment; product unknown",
+    "food": "alpr",
+    "provenance_refs": [
+      "source.wifi.alpr.00047d"
+    ]
+  },
+  {
+    "id": "wifi.alpr.001885",
+    "category": "ALPR",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "001885"
+    },
+    "score": 40,
+    "confidence_cap": "low",
+    "generic": true,
+    "vendor_label": "ALPR vendor clue",
+    "reason": "Vendor makes ALPR and other equipment; product unknown",
+    "food": "alpr",
+    "provenance_refs": [
+      "source.wifi.alpr.001885"
+    ]
+  },
+  {
+    "id": "wifi.alpr.001f92",
+    "category": "ALPR",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "001F92"
+    },
+    "score": 40,
+    "confidence_cap": "low",
+    "generic": true,
+    "vendor_label": "ALPR vendor clue",
+    "reason": "Vendor makes ALPR and other equipment; product unknown",
+    "food": "alpr",
+    "provenance_refs": [
+      "source.wifi.alpr.001f92"
+    ]
+  },
+  {
+    "id": "wifi.alpr.4ccc34",
+    "category": "ALPR",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "4CCC34"
+    },
+    "score": 40,
+    "confidence_cap": "low",
+    "generic": true,
+    "vendor_label": "ALPR vendor clue",
+    "reason": "Vendor makes ALPR and other equipment; product unknown",
+    "food": "alpr",
+    "provenance_refs": [
+      "source.wifi.alpr.4ccc34"
+    ]
+  },
+  {
+    "id": "wifi.alpr.b8e28c",
+    "category": "ALPR",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "B8E28C"
+    },
+    "score": 40,
+    "confidence_cap": "low",
+    "generic": true,
+    "vendor_label": "ALPR vendor clue",
+    "reason": "Vendor makes ALPR and other equipment; product unknown",
+    "food": "alpr",
+    "provenance_refs": [
+      "source.wifi.alpr.b8e28c"
+    ]
+  },
+  {
+    "id": "wifi.alpr.00bf15",
+    "category": "ALPR",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "00BF15"
+    },
+    "score": 40,
+    "confidence_cap": "low",
+    "generic": true,
+    "vendor_label": "ALPR vendor clue",
+    "reason": "Vendor makes ALPR and other equipment; product unknown",
+    "food": "alpr",
+    "provenance_refs": [
+      "source.wifi.alpr.00bf15"
+    ]
+  },
+  {
+    "id": "wifi.alpr.0cbf15",
+    "category": "ALPR",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "0CBF15"
+    },
+    "score": 40,
+    "confidence_cap": "low",
+    "generic": true,
+    "vendor_label": "ALPR vendor clue",
+    "reason": "Vendor makes ALPR and other equipment; product unknown",
+    "food": "alpr",
+    "provenance_refs": [
+      "source.wifi.alpr.0cbf15"
+    ]
+  },
+  {
+    "id": "wifi.camera.00408c",
+    "category": "CAMERA",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "00408C"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Axis radio",
+    "reason": "Axis-associated vendor prefix; camera model unknown",
+    "food": "camera",
+    "provenance_refs": [
+      "source.wifi.camera.00408c"
+    ]
+  },
+  {
+    "id": "wifi.camera.b8a44f",
+    "category": "CAMERA",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "B8A44F"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Axis radio",
+    "reason": "Axis-associated vendor prefix; camera model unknown",
+    "food": "camera",
+    "provenance_refs": [
+      "source.wifi.camera.b8a44f"
+    ]
+  },
+  {
+    "id": "wifi.camera.e0a700",
+    "category": "CAMERA",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "E0A700"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Verkada radio",
+    "reason": "Verkada-associated vendor prefix; camera model unknown",
+    "food": "camera",
+    "provenance_refs": [
+      "source.wifi.camera.e0a700"
+    ]
+  },
+  {
+    "id": "wifi.camera.701ad5",
+    "category": "CAMERA",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "701AD5"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Avigilon radio",
+    "reason": "Avigilon-associated vendor prefix; camera model unknown",
+    "food": "camera",
+    "provenance_refs": [
+      "source.wifi.camera.701ad5"
+    ]
+  },
+  {
+    "id": "wifi.camera.c056e3",
+    "category": "CAMERA",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "C056E3"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Hikvision radio",
+    "reason": "Hikvision-associated vendor prefix; camera model unknown",
+    "food": "camera",
+    "provenance_refs": [
+      "source.wifi.camera.c056e3"
+    ]
+  },
+  {
+    "id": "wifi.camera.4419b6",
+    "category": "CAMERA",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "4419B6"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Hikvision radio",
+    "reason": "Hikvision-associated vendor prefix; camera model unknown",
+    "food": "camera",
+    "provenance_refs": [
+      "source.wifi.camera.4419b6"
+    ]
+  },
+  {
+    "id": "wifi.camera.2caa8e",
+    "category": "CAMERA",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "2CAA8E"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Wyze radio",
+    "reason": "Wyze-associated vendor prefix; camera model unknown",
+    "food": "camera",
+    "provenance_refs": [
+      "source.wifi.camera.2caa8e"
+    ]
+  },
+  {
+    "id": "wifi.ring.ac9fc3",
+    "category": "RING",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "AC9FC3"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Ring vendor radio",
+    "reason": "Ring-associated prefix; model unknown",
+    "food": "ring",
+    "provenance_refs": [
+      "source.wifi.ring.ac9fc3"
+    ]
+  },
+  {
+    "id": "wifi.ring.187f88",
+    "category": "RING",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "187F88"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Ring vendor radio",
+    "reason": "Ring-associated prefix; model unknown",
+    "food": "ring",
+    "provenance_refs": [
+      "source.wifi.ring.187f88"
+    ]
+  },
+  {
+    "id": "wifi.ring.343ea4",
+    "category": "RING",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "343EA4"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Ring vendor radio",
+    "reason": "Ring-associated prefix; model unknown",
+    "food": "ring",
+    "provenance_refs": [
+      "source.wifi.ring.343ea4"
+    ]
+  },
+  {
+    "id": "wifi.ring.54e019",
+    "category": "RING",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "54E019"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Ring vendor radio",
+    "reason": "Ring-associated prefix; model unknown",
+    "food": "ring",
+    "provenance_refs": [
+      "source.wifi.ring.54e019"
+    ]
+  },
+  {
+    "id": "wifi.ring.5c475e",
+    "category": "RING",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "5C475E"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Ring vendor radio",
+    "reason": "Ring-associated prefix; model unknown",
+    "food": "ring",
+    "provenance_refs": [
+      "source.wifi.ring.5c475e"
+    ]
+  },
+  {
+    "id": "wifi.ring.649a63",
+    "category": "RING",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "649A63"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Ring vendor radio",
+    "reason": "Ring-associated prefix; model unknown",
+    "food": "ring",
+    "provenance_refs": [
+      "source.wifi.ring.649a63"
+    ]
+  },
+  {
+    "id": "wifi.ring.90486c",
+    "category": "RING",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "90486C"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Ring vendor radio",
+    "reason": "Ring-associated prefix; model unknown",
+    "food": "ring",
+    "provenance_refs": [
+      "source.wifi.ring.90486c"
+    ]
+  },
+  {
+    "id": "wifi.ring.9c7613",
+    "category": "RING",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "9C7613"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Ring vendor radio",
+    "reason": "Ring-associated prefix; model unknown",
+    "food": "ring",
+    "provenance_refs": [
+      "source.wifi.ring.9c7613"
+    ]
+  },
+  {
+    "id": "wifi.ring.cc3bfb",
+    "category": "RING",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "CC3BFB"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Ring vendor radio",
+    "reason": "Ring-associated prefix; model unknown",
+    "food": "ring",
+    "provenance_refs": [
+      "source.wifi.ring.cc3bfb"
+    ]
+  },
+  {
+    "id": "wifi.ring.c4dbad",
+    "category": "RING",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "C4DBAD"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Ring vendor radio",
+    "reason": "Ring-associated prefix; model unknown",
+    "food": "ring",
+    "provenance_refs": [
+      "source.wifi.ring.c4dbad"
+    ]
+  },
+  {
+    "id": "wifi.ring.242bd6",
+    "category": "RING",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "242BD6"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Ring vendor radio",
+    "reason": "Ring-associated prefix; model unknown",
+    "food": "ring",
+    "provenance_refs": [
+      "source.wifi.ring.242bd6"
+    ]
+  },
+  {
+    "id": "wifi.ring.00b463",
+    "category": "RING",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "00B463"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Ring vendor radio",
+    "reason": "Ring-associated prefix; model unknown",
+    "food": "ring",
+    "provenance_refs": [
+      "source.wifi.ring.00b463"
+    ]
+  },
+  {
+    "id": "wifi.ring.50e467",
+    "category": "RING",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_oui",
+    "matcher": {
+      "value": "50E467"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Ring vendor radio",
+    "reason": "Ring-associated prefix; model unknown",
+    "food": "ring",
+    "provenance_refs": [
+      "source.wifi.ring.50e467"
+    ]
+  },
+  {
+    "id": "ble.flipper.3081",
+    "category": "FLIPPER",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_uuid16",
+    "matcher": {
+      "value": "3081"
+    },
+    "score": 75,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Flipper service",
+    "reason": "Flipper-associated advertised service",
+    "food": "flipper",
+    "provenance_refs": [
+      "source.ble.flipper.3081"
+    ]
+  },
+  {
+    "id": "ble.flipper.3082",
+    "category": "FLIPPER",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_uuid16",
+    "matcher": {
+      "value": "3082"
+    },
+    "score": 75,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Flipper service",
+    "reason": "Flipper-associated advertised service",
+    "food": "flipper",
+    "provenance_refs": [
+      "source.ble.flipper.3082"
+    ]
+  },
+  {
+    "id": "ble.flipper.3083",
+    "category": "FLIPPER",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_uuid16",
+    "matcher": {
+      "value": "3083"
+    },
+    "score": 75,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Flipper service",
+    "reason": "Flipper-associated advertised service",
+    "food": "flipper",
+    "provenance_refs": [
+      "source.ble.flipper.3083"
+    ]
+  },
+  {
+    "id": "ble.flipper.company",
+    "category": "FLIPPER",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "ble_company_id",
+    "matcher": {
+      "value": "0E29"
+    },
+    "score": 65,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Flipper Devices radio",
+    "reason": "Flipper Devices company identifier",
+    "food": "flipper",
+    "provenance_refs": [
+      "source.ble.flipper.company"
+    ]
+  },
+  {
+    "id": "wifi.pwnagotchi.mesh",
+    "category": "PWNAGOTCHI",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "protocol",
+    "matcher": {
+      "value": "pwnagotchi"
+    },
+    "score": 85,
+    "confidence_cap": "high",
+    "generic": false,
+    "vendor_label": "Pwnagotchi announcement",
+    "reason": "Structured mesh announcement with name, version and count",
+    "food": "pwnagotchi",
+    "provenance_refs": [
+      "source.wifi.pwnagotchi.mesh"
+    ]
+  },
+  {
+    "id": "wifi.pineapple.management",
+    "category": "PINEAPPLE",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "wifi_ssid_prefix",
+    "matcher": {
+      "value": "Pineapple_"
+    },
+    "score": 60,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Pineapple-style network",
+    "reason": "Pineapple management-style name; mutable and spoofable",
+    "food": "pineapple",
+    "provenance_refs": [
+      "source.wifi.pineapple.management"
+    ]
+  },
+  {
+    "id": "wifi.behavior.corroborated",
+    "category": "EVIL_TWIN",
+    "enabled_by_default": true,
+    "experimental": false,
+    "evidence_kind": "behavior",
+    "matcher": {
+      "value": "security_corroborated"
+    },
+    "score": 75,
+    "confidence_cap": "medium",
+    "generic": false,
+    "vendor_label": "Corroborated security mismatch",
+    "reason": "Security mismatch plus vendor, PMF or signal/channel differences",
+    "food": "evil_twin",
+    "provenance_refs": [
+      "source.wifi.behavior.corroborated"
+    ]
+  }
+]

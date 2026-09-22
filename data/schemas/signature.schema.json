@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "category",
+    "confidence_cap",
+    "enabled_by_default",
+    "evidence_kind",
+    "experimental",
+    "food",
+    "generic",
+    "id",
+    "matcher",
+    "provenance_refs",
+    "reason",
+    "score",
+    "vendor_label"
+  ],
+  "properties": {
+    "vendor_label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40,
+      "pattern": "^[ -~]+$"
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "^[ -~]+$"
+    },
+    "experimental": {
+      "type": "boolean"
+    },
+    "confidence_cap": {
+      "enum": [
+        "high",
+        "medium",
+        "low",
+        "informational"
+      ]
+    },
+    "matcher": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      }
+    },
+    "score": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "provenance_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_kind": {
+      "enum": [
+        "wifi_oui",
+        "wifi_ssid_exact",
+        "wifi_ssid_prefix",
+        "ble_name_exact",
+        "ble_name_prefix",
+        "ble_uuid16",
+        "ble_company_id",
+        "payload_prefix",
+        "protocol",
+        "behavior",
+        "ble_uuid128"
+      ]
+    },
+    "food": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 24,
+      "pattern": "^[ -~]+$"
+    },
+    "enabled_by_default": {
+      "type": "boolean"
+    },
+    "category": {
+      "enum": [
+        "FLOCK",
+        "AXON",
+        "GLASSES",
+        "SKIMMER",
+        "RAVEN",
+        "AIRTAG",
+        "TILE",
+        "SAMSUNG_TAG",
+        "GOOGLE_TAG",
+        "DRONE",
+        "ALPR",
+        "CAMERA",
+        "RING",
+        "IBEACON",
+        "FLIPPER",
+        "PWNAGOTCHI",
+        "PINEAPPLE",
+        "DEAUTH",
+        "EVIL_TWIN"
+      ]
+    },
+    "generic": {
+      "type": "boolean"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.]{1,63}$"
+    }
+  }
+}

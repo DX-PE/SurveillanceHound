@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+build*/
+dist/
+sdkconfig
+sdkconfig.*
+!sdkconfig.defaults
+__pycache__/
+*.pyc
+.venv/
+.ruff_cache/
+managed_components/
+dependencies.lock
+*.JSONL
+!tests/fixtures/*.JSONL

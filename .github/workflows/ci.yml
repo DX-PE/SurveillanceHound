@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: Apache-2.0
+name: firmware-and-host
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-dev.txt
+      - run: python tools/compile_signatures.py --check && python tools/pack_assets.py --check && python tools/check_static.py
+      - run: ruff check tools tests/host --select F && ruff format --check tools tests/host
+      - run: find main components tools tests -type f \( -name '*.cpp' -o -name '*.hpp' \) -print0 | xargs -0 clang-format --dry-run --Werror
+      - run: cmake -S . -B build-host -G Ninja -DSNIFFER_HOST=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS=-fanalyzer
+      - run: cmake --build build-host && ctest --test-dir build-host --output-on-failure
+      - run: ./build-host/fuzz_mutate 60
+  firmware:
+    runs-on: ubuntu-24.04
+    container: espressif/idf:v6.0.2
+    strategy:
+      matrix:
+        profile: [release, debug, test, demo]
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py -B "build-${{ matrix.profile }}" -D "SDKCONFIG=sdkconfig.${{ matrix.profile }}" -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;profiles/${{ matrix.profile }}.defaults" build
