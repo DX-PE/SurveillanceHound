@@ -30,6 +30,8 @@ async function display(response) {
     pixels.data[i * 4 + 3] = 255;
   }
   context.putImageData(pixels, 0, 0);
+  document.querySelector('#watch-status').textContent = state.tag_watch_warning ? 'Possible following: repeated tag presence. Tap REVIEW TAG to acknowledge, ignore or snooze.' : state.tag_watch_armed ? 'Travel Watch armed. No active warning.' : 'Watch is off.';
+  document.querySelector('#preview-tag-watch').disabled = state.paused;
   following = state.following;
   document.querySelector('#send-signal').disabled = !following || state.paused;
   document.querySelector('#pet-name').textContent = state.name;
@@ -53,7 +55,7 @@ function request(action) {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(action)
     }) : await fetch('/api/frame');
     await display(response);
-    if (action?.action === 'inject') {
+    if (['inject', 'tag_watch_test'].includes(action?.action)) {
       focusDisplay();
     }
   }).catch(fail);
@@ -90,3 +92,6 @@ const signalLevel = document.querySelector('#signal-level');
 signalLevel.addEventListener('input', () => {document.querySelector('#signal-reading').textContent = `-${signalLevel.value} dBm`;});
 document.querySelector('#send-signal').addEventListener('click', () => request({action: 'signal', b: Number(signalLevel.value)}).then(focusDisplay));
 document.querySelector('#repeat-signal').addEventListener('change', event => {if (event.target.checked) focusDisplay();});
+
+// Synthetic-only time jump; live firmware still requires actual elapsed observation time.
+document.querySelector('#preview-tag-watch').addEventListener('click', () => request({action: 'tag_watch_test', a: Number(document.querySelector('#watch-category').value), b: Number(signalLevel.value)}));

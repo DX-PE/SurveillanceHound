@@ -53,7 +53,18 @@ class Canvas {
     int tile, width, height, rows;
     std::span<uint16_t> pixels;
     uint8_t theme{};
+    bool red_warning{};
     uint16_t color(uint16_t value) const {
+        if (red_warning) {
+            if (value == bg)
+                return 0x7800;
+            if (value == panel)
+                return 0x4000;
+            if (value == grid)
+                return 0xB000;
+            // Keep white text on dark red even when the normal theme is Daylight.
+            return value;
+        }
         if (!theme)
             return value;
         constexpr uint16_t source[] = {bg, panel, ink, muted, mint, amber, pink, grid};
@@ -336,6 +347,15 @@ struct Layout {
         return {12 + (i % cols) * cw, (portrait ? 78 : 68) + (i / cols) * (portrait ? 100 : 80),
                 cw - 6, portrait ? 94 : 74};
     }
+    Rect home_book() const {
+        return portrait ? Rect{238, 32, 70, 25} : Rect{390, 32, 78, 25};
+    }
+    Rect home_watch() const {
+        return portrait ? Rect{168, 32, 64, 25} : Rect{302, 32, 80, 25};
+    }
+    Rect home_follow() const {
+        return portrait ? Rect{180, 264, 116, 22} : Rect{238, 32, 56, 25};
+    }
     Rect quiet() const {
         return portrait ? Rect{180, 362, 118, 28} : Rect{312, 186, 146, 30};
     }
@@ -379,7 +399,7 @@ const char *titles[] = {
     "RESET PROGRESS", "ALERT TYPES",        "SET UTC TIME",      "BATTERY SETUP",
     "CLEAR LOGS",     "SELF TEST",          "SCENT BOOK",        "SCENT CARD",
     "WARDROBE",       "QUIET ALERTS",       "IGNORED SCENTS",    "FOLLOW SCENT",
-    "ATMOSPHERE",     "DISPLAY OPTIONS"};
+    "ATMOSPHERE",     "DISPLAY OPTIONS",    "TAG WATCH",         "WATCH PROGRESS"};
 } // namespace
 uint64_t View::identity(const Detection &d) const {
     if (std::none_of(identity_key.begin(), identity_key.end(), [](auto b) { return b != 0; }))
@@ -412,6 +432,15 @@ void View::reset_progress() {
 void View::event(const Detection &d) {
     if (paused || size_t(d.category) >= category_count || d.score > 100)
         return;
+    update_tag_watch();
+    if (d.demo == demo && TagWatch::tag(d.category)) {
+        const auto hash = identity(d);
+        if (listening() && (settings.enabled_categories & (1U << unsigned(d.category))) &&
+            should_alert(settings, d) && d.score >= 50 && !collection().is_ignored(hash))
+            tag_watch.observe(hash, d, now);
+        else if (auto *e = tag_watch.find(hash))
+            tag_watch.drop(*e, false);
+    }
     auto &book = d.demo ? preview_companion : companion;
     bool first = !book.scents[size_t(d.category)].observations;
     book.observe(d);
@@ -474,11 +503,83 @@ void View::tap(int x, int y) {
     const Layout l(settings.portrait);
     if (x < 0 || y < 0 || x >= l.w || y >= l.h || screen == Screen::Calibration)
         return;
+    if (y < 26 && x < 174 && watch_warning()) {
+        open_tag_watch();
+        return;
+    }
+    if ((screen == Screen::Home && l.home_watch().has(x, y)) ||
+        (screen == Screen::Settings && settings_page == 0 &&
+         Rect{l.w - 170, 32, 108, 25}.has(x, y))) {
+        open_tag_watch();
+        return;
+    }
+    if (screen == Screen::WatchProgress) {
+        if (Rect{l.w - 108, 32, 96, 25}.has(x, y)) {
+            const auto *warning = watch_warning();
+            watch_review = warning ? warning->hash : 0;
+            screen = Screen::TagWatch;
+        }
+        if (l.confirm(false).has(x, y))
+            screen = Screen::Home;
+        if (l.confirm(true).has(x, y))
+            watch_page = (watch_page + 1) % std::max(1U, (watch_count() + 3) / 4);
+        return;
+    }
+    if (screen == Screen::TagWatch) {
+        if (Rect{l.w - 150, 32, 78, 25}.has(x, y)) {
+            watch_page = 0;
+            screen = Screen::WatchProgress;
+            return;
+        }
+        if (l.row(0).has(x, y)) {
+            if (tag_watch.armed)
+                tag_watch.clear();
+            else {
+                tag_watch.start(now, demo);
+                screen = Screen::WatchProgress;
+                watch_page = 0;
+            }
+            watch_review = 0;
+            notice[0] = 0;
+        }
+        if (l.row(1).has(x, y))
+            tag_watch.flash = !tag_watch.flash;
+        // The target is frozen on opening this page, even when another tag qualifies.
+        auto *target = tag_watch.find(watch_review);
+        if ((!target || !target->ready(now) || !watch_eligible(*target)) && l.row(2).has(x, y) &&
+            watch_warning()) {
+            open_tag_watch();
+            return;
+        }
+        if (target && target->ready(now) && watch_eligible(*target)) {
+            if (l.row(2).has(x, y)) {
+                target->acknowledged = true;
+                screen = Screen::Home;
+            }
+            if (l.row(3).has(x, y)) {
+                if (collection().ignore(target->hash, target->category)) {
+                    requests |= Save;
+                    update_tag_watch();
+                    screen = Screen::Home;
+                } else
+                    std::snprintf(notice.data(), notice.size(),
+                                  "IGNORE LIST FULL / REMOVE AN ENTRY");
+            }
+        }
+        if (l.row(4).has(x, y))
+            screen = Screen::Home;
+        if (l.more().has(x, y)) {
+            (demo ? preview_snooze_until : snooze_until) = snoozed_until() > now ? 0 : now + 900000;
+            alert_until = 0;
+            screen = Screen::Home;
+        }
+        return;
+    }
     if (y < 26 && x >= l.w - 60) {
         rotate();
         return;
     }
-    if (screen == Screen::Home && Rect{l.w - 90, 32, 78, 25}.has(x, y)) {
+    if (screen == Screen::Home && l.home_book().has(x, y)) {
         screen = Screen::ScentBook;
         return;
     }
@@ -492,18 +593,24 @@ void View::tap(int x, int y) {
     if (screen == Screen::Home && l.sniff().has(x, y)) {
         paused = !paused;
         follow.restart(now);
+        if (tag_watch.armed)
+            tag_watch.start(now, demo);
+        watch_review = 0;
         requests |= Pause;
         alert_until = meal_until = happy_until = 0;
         scanning = !paused;
         notice[0] = 0;
         return;
     }
+    if (screen == Screen::Home && watch_warning() && l.quiet().has(x, y)) {
+        open_tag_watch();
+        return;
+    }
     if (screen == Screen::Home && alert_until > now && l.quiet().has(x, y)) {
         open_actions(alert_detection);
         return;
     }
-    if (screen == Screen::Home && follow.active &&
-        (l.portrait ? Rect{180, 264, 116, 22} : Rect{302, 32, 82, 25}).has(x, y)) {
+    if (screen == Screen::Home && follow.active && l.home_follow().has(x, y)) {
         screen = Screen::Follow;
         return;
     }
@@ -939,6 +1046,8 @@ void View::tap(int x, int y) {
                 if (demo)
                     preview_appearance = appearance;
                 follow = {};
+                tag_watch.clear();
+                watch_review = 0;
                 requests |= Demo;
                 screen = Screen::Home;
                 break;
@@ -990,16 +1099,29 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
     const Layout l(settings.portrait);
     if (tile_y < 0 || tile_y >= l.h || pixels.size() != size_t(l.w * tile_rows()))
         return;
-    Canvas c{tile_y, l.w, l.h, tile_rows(), pixels, look().theme};
+    Canvas c{tile_y, l.w, l.h, tile_rows(), pixels, look().theme, watch_red()};
     std::fill(pixels.begin(), pixels.end(), c.color(bg));
     char text[100];
     c.rect(0, 0, l.w, 26, panel);
-    c.text(12, 9, demo ? "DEMO / NO SAVES" : settings.research ? "RAW LOG" : "PRIVATE", mint, 1);
+    const auto *warning = watch_warning();
+    c.text(12, 9,
+           warning             ? (demo ? "DEMO TAG / REVIEW" : "TAG ALERT / REVIEW")
+           : demo              ? "DEMO / NO SAVES"
+           : settings.research ? "RAW LOG"
+                               : "PRIVATE",
+           warning ? ink : mint, 1);
     c.text(l.w - 174, 9, sd_error ? "SD ERROR" : sd ? "SD OK" : "SD OFF", muted, 1);
     c.text(l.w - 57, 9, settings.rotation_locked ? "LOCKED" : "TURN",
            settings.rotation_locked ? muted : pink, 1);
-    c.text(13, 42, titles[int(screen)], pink, 2);
-    c.text(12, 40, titles[int(screen)], ink, 2);
+    if (screen == Screen::Home && l.portrait) {
+        c.text(13, 31, "SURVEILLANCE", pink, 2);
+        c.text(12, 29, "SURVEILLANCE", ink, 2);
+        c.text(13, 48, "HOUND", pink, 2);
+        c.text(12, 46, "HOUND", ink, 2);
+    } else {
+        c.text(13, 42, titles[int(screen)], pink, 2);
+        c.text(12, 40, titles[int(screen)], ink, 2);
+    }
     switch (screen) {
     case Screen::Welcome:
         c.sprite(l.w - 154, l.portrait ? 164 : 78, settings.character,
@@ -1062,9 +1184,10 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
         button(c, l.confirm(true), "RESET");
         break;
     case Screen::Home: {
-        button(c, {l.w - 90, 32, 78, 25}, "BOOK");
+        button(c, l.home_book(), "BOOK");
         if (follow.active && !l.portrait)
-            button(c, {302, 32, 82, 25}, "FOLLOW", true);
+            button(c, l.home_follow(), "FOLLOW", true);
+        button(c, l.home_watch(), "WATCH", tag_watch.armed);
         int stage_w = l.portrait ? 296 : 280, stage_h = l.portrait ? 226 : 192;
         c.box(12, 64, stage_w, stage_h, grid);
         int horizon = 64 + stage_h - 49;
@@ -1304,28 +1427,122 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
             c.text(12, l.h - 58, text, amber, 1);
         }
         if (follow.active && l.portrait)
-            button(c, {180, 264, 116, 22}, "FOLLOW", true);
+            button(c, l.home_follow(), "FOLLOW", true);
         button(c, l.sniff(), paused ? "START SNIFFING" : "STOP SNIFFING", paused);
-        if (alert_until > now) {
+        if (warning || alert_until > now) {
             const auto &d = alert_detection;
             // Every home alert leaves the hound and sniffing control visible.
             int x = l.portrait ? 12 : 302, y = l.portrait ? 302 : 66;
             int w = l.portrait ? 296 : 166, h = l.portrait ? 90 : 158;
             c.box(x, y, w, h, pink);
             c.rect(x + 1, y + 1, w - 2, 24, pink);
-            c.text(x + 10, y + 9, "NEW SCENT", bg, 1);
-            c.text(x + 10, y + 34, categories[size_t(d.category)], ink, l.portrait ? 2 : 1);
-            std::snprintf(text, sizeof(text), "%s / %u", badge(d.score), d.score);
+            c.text(x + 10, y + 9, warning ? "POSSIBLE FOLLOWING" : "NEW SCENT", bg, 1);
+            c.text(x + 10, y + 34, categories[size_t(warning ? warning->category : d.category)],
+                   ink, l.portrait ? 2 : 1);
+            if (warning)
+                std::snprintf(
+                    text, sizeof(text), "%llu MIN / SAME ID",
+                    static_cast<unsigned long long>((warning->last - warning->first) / 60000));
+            else
+                std::snprintf(text, sizeof(text), "%s / %u", badge(d.score), d.score);
             c.text(x + 10, y + 56, text, amber, 1);
             if (!l.portrait)
                 c.wrap(x + 10, y + 75,
-                       d.rule_count && d.rules[0] ? d.rules[0]->reason : "Observation received", 23,
-                       muted, 1, 4);
+                       warning                      ? "Repeated tag presence. Movement unconfirmed."
+                       : d.rule_count && d.rules[0] ? d.rules[0]->reason
+                                                    : "Observation received",
+                       23, muted, 1, 4);
             else
-                c.text(x + 10, y + h - 16, d.demo ? "DEMO / TAP TO DISMISS" : "TAP TO DISMISS",
+                c.text(x + 10, y + h - 16,
+                       warning  ? "PRESENCE CLUE"
+                       : d.demo ? "DEMO / TAP TO DISMISS"
+                                : "TAP TO DISMISS",
                        mint, 1);
-            button(c, l.quiet(), "SNOOZE / IGNORE", true);
+            button(c, l.quiet(), warning ? "REVIEW TAG" : "SNOOZE / IGNORE", true);
         }
+        break;
+    }
+    case Screen::WatchProgress: {
+        button(c, {l.w - 108, 32, 96, 25}, "CONTROLS");
+        const unsigned count = watch_count(), pages = std::max(1U, (count + 3) / 4);
+        const unsigned page = std::min(watch_page, pages - 1);
+        unsigned index = 0;
+        for (size_t slot = 0; slot < tag_watch.entries.size(); ++slot) {
+            const auto &entry = tag_watch.entries[slot];
+            if (!entry.fresh(now) || !watch_eligible(entry))
+                continue;
+            const unsigned item = index++;
+            if (item / 4 != page)
+                continue;
+            const auto r = l.detector(item % 4);
+            c.box(r.x, r.y, r.w, r.h, entry.ready(now) ? amber : grid);
+            std::snprintf(text, sizeof(text), "%s / %02u", categories[size_t(entry.category)],
+                          unsigned(slot + 1));
+            c.text(r.x + 10, r.y + 5, text, ink, l.portrait ? 1 : 2);
+            if (entry.acknowledged)
+                std::snprintf(text, sizeof(text), "ACK");
+            else
+                std::snprintf(text, sizeof(text), "%u", entry.score);
+            c.text(r.x + r.w - 30, r.y + 5, text, mint, 1);
+            const auto seconds = std::min<uint64_t>(600, (entry.last - entry.first) / 1000);
+            std::snprintf(text, sizeof(text), "%02llu:%02llu/10:00 %u/8 MIN  SEEN %llus",
+                          static_cast<unsigned long long>(seconds / 60),
+                          static_cast<unsigned long long>(seconds % 60),
+                          std::min<unsigned>(8, entry.minutes),
+                          static_cast<unsigned long long>((now - entry.last) / 1000));
+            c.text(r.x + 10, r.y + (l.portrait ? 25 : 24), text, muted, 1);
+            if (l.portrait)
+                c.text(r.x + 10, r.y + 44,
+                       entry.acknowledged ? "ACKNOWLEDGED / QUIET UNTIL A GAP"
+                       : entry.ready(now) ? "QUALIFIED / REVIEW IN CONTROLS"
+                                          : "BUILDING A CONTINUOUS WINDOW",
+                       mint, 1);
+        }
+        if (!count) {
+            c.text(16, 90, tag_watch.armed ? "NO TAG TIMER YET" : "TRAVEL WATCH IS OFF", mint, 2);
+            c.wrap(16, 122, watch_hint(), l.portrait ? 24 : 36, muted, 1, 3);
+            c.wrap(16, l.portrait ? 200 : 164,
+                   "An ordinary scent alert needs one sighting. Watch needs the same identity for "
+                   "ten minutes.",
+                   l.portrait ? 24 : 54, muted, 1, 4);
+        }
+        button(c, l.confirm(false), "BACK TO HOUND");
+        std::snprintf(text, sizeof(text), "NEXT / %u OF %u", page + 1, pages);
+        button(c, l.confirm(true), text);
+        c.text(16, l.h - 34, watch_hint(), mint, 1);
+        std::snprintf(text, sizeof(text), "RESETS GAP %lu / FILTER %lu / CLOCK %lu",
+                      static_cast<unsigned long>(std::min<uint32_t>(999, tag_watch.gap_resets)),
+                      static_cast<unsigned long>(std::min<uint32_t>(999, tag_watch.filter_resets)),
+                      static_cast<unsigned long>(std::min<uint32_t>(999, tag_watch.clock_skips)));
+        c.text(16, l.h - 20, text, muted, 1);
+        break;
+    }
+    case Screen::TagWatch: {
+        button(c, {l.w - 150, 32, 78, 25}, "STATUS");
+        c.text(l.w - 66, 44, tag_watch.armed ? "ARMED" : "OFF", tag_watch.armed ? mint : muted, 1);
+        button(c, l.row(0), tag_watch.armed ? "END TRAVEL WATCH" : "START TRAVEL WATCH",
+               tag_watch.armed);
+        button(c, l.row(1),
+               settings.reduced_animation ? "RED WARNING: STEADY / REDUCED"
+               : tag_watch.flash          ? "RED WARNING: SLOW FLASH"
+                                          : "RED WARNING: STEADY");
+        const auto *target = tag_watch.find(watch_review);
+        const bool reviewable = target && target->ready(now) && watch_eligible(*target);
+        if (reviewable)
+            std::snprintf(text, sizeof(text), "ACK: %s", categories[size_t(target->category)]);
+        else
+            std::snprintf(text, sizeof(text),
+                          warning ? "REVIEW NEXT WARNING" : "NO WARNING TO ACKNOWLEDGE");
+        button(c, l.row(2), text, reviewable);
+        button(c, l.row(3), reviewable ? "IGNORE THIS TAG" : "IGNORE: NO TAG SELECTED");
+        button(c, l.row(4), "BACK TO HOUND");
+        button(c, l.more(), snoozed_until() > now ? "RESUME ALERTS" : "SNOOZE ALERTS: 15 MIN");
+        c.text(16, l.h - 34, "STATUS SHOWS EACH TAG TIMER AND RESTARTS", muted, 1);
+        c.text(16, l.h - 20,
+               notice[0] ? notice.data()
+               : demo    ? "DEMO ONLY / WATCH RESETS ON EXIT"
+                         : "START WHEN TRAVELLING / RESETS AT REBOOT",
+               mint, 1);
         break;
     }
     case Screen::Display: {
@@ -1625,6 +1842,8 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
         button(c, l.more(), text);
         break;
     case Screen::Settings: {
+        if (settings_page == 0)
+            button(c, {l.w - 170, 32, 108, 25}, "TAG WATCH", tag_watch.armed);
         constexpr const char *groups[] = {"HOUND", "DISPLAY",     "ALERTS",
                                           "DATA",  "MAINTENANCE", "TOOLS"};
         c.text(l.w - 12 - int(std::strlen(groups[settings_page])) * 6, 44, groups[settings_page],

@@ -83,6 +83,7 @@ void app_task(void *) {
     for (;;) {
         esp_task_wdt_reset();
         view.now = esp_timer_get_time() / 1000;
+        view.update_tag_watch();
         if (!view.demo)
             state.pet.tick(view.now);
         radio::Raw raw{};
@@ -110,6 +111,10 @@ void app_task(void *) {
                 ++view.wifi_accepted;
             else
                 ++view.ble_accepted;
+            // The radio task can enqueue another packet while this batch is processed.
+            // Refresh the clock per received packet so valid new timestamps are not
+            // rejected as being in the future by Follow Scent or Tag Watch.
+            view.now = esp_timer_get_time() / 1000;
             view.observe(o);
             view.drones.ingest(o);
             std::array<Detection, 4> found{};
@@ -197,6 +202,7 @@ void app_task(void *) {
         if (request & ui::Calibrate) {
             radio::pause(true);
             view.follow.restart(view.now);
+            view.tag_watch.clear();
             calibrating = true;
             view.calibration_step = 0;
         }
@@ -352,23 +358,39 @@ void app_task(void *) {
         static uint64_t last_health{};
         if ((!last_health && view.now >= 5000) ||
             (last_health && view.now - last_health >= 30000)) {
-            std::printf("HOUND health: heap=%lu min=%lu largest=%lu stacks=%lu/%lu/%lu/%lu "
-                        "wifi=%lu ble=%lu drops=%lu radio_errors=%lu save_errors=%lu strong=%lu "
-                        "likely=%lu\n",
-                        static_cast<unsigned long>(view.heap),
-                        static_cast<unsigned long>(view.min_heap),
-                        static_cast<unsigned long>(view.largest_heap),
-                        static_cast<unsigned long>(view.stack_free),
-                        static_cast<unsigned long>(view.radio_stack),
-                        static_cast<unsigned long>(view.ble_stack),
-                        static_cast<unsigned long>(view.storage_stack),
-                        static_cast<unsigned long>(view.wifi_count),
-                        static_cast<unsigned long>(view.ble_count),
-                        static_cast<unsigned long>(view.dropped),
-                        static_cast<unsigned long>(view.radio_errors),
-                        static_cast<unsigned long>(storage::health.save_errors.load()),
-                        static_cast<unsigned long>(view.counts[0]),
-                        static_cast<unsigned long>(view.counts[1]));
+            uint64_t watch_seconds = 0;
+            unsigned watch_minutes = 0;
+            for (const auto &entry : view.tag_watch.entries)
+                if (entry.fresh(view.now) && view.watch_eligible(entry) &&
+                    (entry.last - entry.first) / 1000 >= watch_seconds) {
+                    watch_seconds = (entry.last - entry.first) / 1000;
+                    watch_minutes = entry.minutes;
+                }
+            std::printf(
+                "HOUND health: heap=%lu min=%lu largest=%lu stacks=%lu/%lu/%lu/%lu "
+                "wifi=%lu ble=%lu drops=%lu radio_errors=%lu save_errors=%lu strong=%lu "
+                "likely=%lu uptime_s=%llu watch=%u watch_tags=%u watch_seconds=%llu "
+                "watch_minutes=%u watch_gap=%lu watch_filter=%lu watch_clock=%lu "
+                "threshold=%u snoozed=%u\n",
+                static_cast<unsigned long>(view.heap), static_cast<unsigned long>(view.min_heap),
+                static_cast<unsigned long>(view.largest_heap),
+                static_cast<unsigned long>(view.stack_free),
+                static_cast<unsigned long>(view.radio_stack),
+                static_cast<unsigned long>(view.ble_stack),
+                static_cast<unsigned long>(view.storage_stack),
+                static_cast<unsigned long>(view.wifi_count),
+                static_cast<unsigned long>(view.ble_count),
+                static_cast<unsigned long>(view.dropped),
+                static_cast<unsigned long>(view.radio_errors),
+                static_cast<unsigned long>(storage::health.save_errors.load()),
+                static_cast<unsigned long>(view.counts[0]),
+                static_cast<unsigned long>(view.counts[1]),
+                static_cast<unsigned long long>(view.now / 1000), unsigned(view.tag_watch.armed),
+                view.watch_count(), static_cast<unsigned long long>(watch_seconds), watch_minutes,
+                static_cast<unsigned long>(view.tag_watch.gap_resets),
+                static_cast<unsigned long>(view.tag_watch.filter_resets),
+                static_cast<unsigned long>(view.tag_watch.clock_skips),
+                unsigned(state.settings.threshold), unsigned(view.snoozed_until() > view.now));
             last_health = view.now;
         }
         bool alert = view.alert_until > view.now && !view.paused;

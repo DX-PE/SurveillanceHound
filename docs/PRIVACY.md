@@ -18,3 +18,7 @@ Follow Scent holds one selected address/radio/address-type identity and at most 
 Remote ID Basic/Location/System details are bounded, volatile on-screen snapshots. They are never persisted. Manual UTC is local input, marked as manual, and resets on reboot.
 
 There is no network client, account, telemetry, GPS, upload, or online time service. The SDK includes networking libraries required by its Wi-Fi stack; the application does not initiate network communication.
+
+## Tag Watch
+
+Travel Watch keeps at most sixteen keyed digests in RAM, with category, qualifying minute count and monotonic first/last times. It adds no raw identifiers, location records, NVS blobs or SD events. Existing observation logging still applies. Watch windows and acknowledgements disappear on reboot, ending the watch or demo transitions; Stop/Start resets observation windows. Ignore uses the existing per-device/category keyed ignore list. Synthetic watch data never joins the real watch. Address rotation is not correlated.

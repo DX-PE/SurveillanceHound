@@ -4,6 +4,7 @@
 #include "sniffer/companion.hpp"
 #include "sniffer/display.hpp"
 #include "sniffer/follow.hpp"
+#include "sniffer/tag_watch.hpp"
 namespace sniffer::ui {
 enum class Screen {
     Welcome,
@@ -31,7 +32,9 @@ enum class Screen {
     Ignored,
     Follow,
     Appearance,
-    Display
+    Display,
+    TagWatch,
+    WatchProgress
 };
 enum Request : uint32_t {
     Save = 1,
@@ -92,6 +95,79 @@ class View {
                                  (look().speech == 2 ? now % 12000 < 8000 : now % 24000 < 5000));
     }
     FollowScent follow{};
+    sniffer::TagWatch tag_watch{};
+    uint64_t watch_review{};
+    unsigned watch_page{};
+    bool watch_eligible(const sniffer::TagWatch::Entry &e) const {
+        return (settings.enabled_categories & (1U << unsigned(e.category))) &&
+               (settings.alert_categories & (1U << unsigned(e.category))) &&
+               e.score >= std::max<uint8_t>(50, settings.threshold) &&
+               !collection().is_ignored(e.hash);
+    }
+    void update_tag_watch() {
+        if (tag_watch.demo != demo) {
+            tag_watch.clear();
+            watch_review = 0;
+        }
+        for (auto &e : tag_watch.entries)
+            if (e.hash && (!e.fresh(now) || !watch_eligible(e) || !listening()))
+                tag_watch.drop(e, !e.fresh(now));
+        if (screen == Screen::TagWatch && !watch_review)
+            if (const auto *warning = watch_warning())
+                watch_review = warning->hash;
+    }
+    unsigned watch_count() const {
+        unsigned count = 0;
+        for (const auto &e : tag_watch.entries)
+            count += e.fresh(now) && watch_eligible(e);
+        return count;
+    }
+    const char *watch_hint() const {
+        if (!tag_watch.armed)
+            return "WATCH OFF / START IN CONTROLS";
+        if (!listening())
+            return "SNIFFING PAUSED / NO TIMING";
+        if (snoozed_until() > now)
+            return "ALERTS SNOOZED / RESUME IN CONTROLS";
+        if (watch_count())
+            return "SEEN = LAST SIGHTING / 2 MIN GAP RESTARTS";
+        if (settings.threshold == 80)
+            return "HIGH FILTER EXCLUDES SAMSUNG / FIND MY";
+        for (size_t i = 0; i < recent_count; ++i) {
+            const auto &d = recent[i];
+            if (d.demo != demo || !TagWatch::tag(d.category) || now < d.last_ms ||
+                now - d.last_ms > 90000)
+                continue;
+            if (!(settings.enabled_categories & (1U << unsigned(d.category))))
+                return "RECENT TAG DETECTOR IS DISABLED";
+            if (!(settings.alert_categories & (1U << unsigned(d.category))))
+                return "RECENT TAG ALERT TYPE IS OFF";
+            if (d.score < 50)
+                return "RECENT TAG EVIDENCE BELOW MEDIUM";
+        }
+        if (collection().ignored_count())
+            return "NO TIMERS / CHECK IGNORED SCENTS";
+        return "WAITING FOR TAGS / NO MOVEMENT PROOF";
+    }
+    const sniffer::TagWatch::Entry *watch_warning() const {
+        if (!tag_watch.armed || tag_watch.demo != demo || !listening() || snoozed_until() > now)
+            return nullptr;
+        for (const auto &e : tag_watch.entries)
+            if (e.ready(now) && !e.acknowledged && watch_eligible(e))
+                return &e;
+        return nullptr;
+    }
+    bool watch_red() const {
+        return settings.onboarded && screen != Screen::Calibration && screen != Screen::SelfTest &&
+               watch_warning() &&
+               (!tag_watch.flash || settings.reduced_animation || now % 2000 < 1000);
+    }
+    void open_tag_watch() {
+        const auto *warning = watch_warning();
+        watch_review = warning ? warning->hash : 0;
+        watch_page = 0;
+        screen = warning || !tag_watch.armed ? Screen::TagWatch : Screen::WatchProgress;
+    }
     bool listening() const {
         return !paused && (demo || scanning);
     }

@@ -5,7 +5,7 @@ Heap values are bytes of byte-addressable internal RAM.
 Stack order: UI / radio / BLE / storage. Values are free stack watermarks in bytes.
 Health snapshots start near 5 s uptime and repeat every 30 s.
 Queue drops are reported; this is not a controlled capture-loss or release-acceptance test.
-Both captures reported the expected missing-card initialization error 0x107.
+The two pre-Tag-Watch captures reported the expected missing-card initialization error 0x107.
 Observed identifiers and packet payloads are deliberately omitted.
 
 Memory fix before final four-pixel card-height adjustment
@@ -22,7 +22,7 @@ HOUND health: heap=86276 min=79924 largest=77824 stacks=3864/3092/1332/3156 wifi
 HOUND health: heap=86856 min=79924 largest=77824 stacks=3864/3092/1332/3156 wifi=9587 ble=11226 drops=9021 radio_errors=0 save_errors=0 strong=2 likely=3
 HOUND health: heap=86276 min=79924 largest=77824 stacks=3864/3092/1332/3156 wifi=10831 ble=12659 drops=10250 radio_errors=0 save_errors=0 strong=2 likely=3
 
-Final installed release firmware
+Earlier compact-alert release firmware
 Application SHA-256: f40710edaaa763682922f5de1962f1a1e7801e7eb95619c2adf018e825d7bf31
 USB capture duration: 135 seconds
 HOUND health: heap=86244 min=79896 largest=77824 stacks=4844/3096/1336/4672 wifi=192 ble=173 drops=150 radio_errors=0 save_errors=0 strong=2 likely=1
@@ -30,3 +30,9 @@ HOUND health: heap=86824 min=79896 largest=77824 stacks=4844/3096/1336/4672 wifi
 HOUND health: heap=86244 min=79896 largest=77824 stacks=3868/3096/1336/3200 wifi=2563 ble=2921 drops=2367 radio_errors=0 save_errors=0 strong=2 likely=3
 HOUND health: heap=86824 min=79896 largest=77824 stacks=3868/3096/1336/3200 wifi=3766 ble=4369 drops=3536 radio_errors=0 save_errors=0 strong=2 likely=3
 HOUND health: heap=86244 min=79896 largest=77824 stacks=3868/3096/1336/3200 wifi=4979 ble=5690 drops=4624 radio_errors=0 save_errors=0 strong=2 likely=4
+
+Tag Watch release / boot smoke only (watch initially off)
+Application SHA-256: 955acae092fc7ddbda2b4fe68effd4a2049113468cb5c8839329fc85155dad7d
+USB capture duration: 45 seconds
+HOUND health: heap=85668 min=79304 largest=77824 stacks=4764/3100/1372/4652 wifi=224 ble=189 drops=184 radio_errors=0 save_errors=0 strong=2 likely=1
+HOUND health: heap=86248 min=79304 largest=77824 stacks=4764/3100/1340/4652 wifi=1286 ble=1511 drops=1191 radio_errors=0 save_errors=0 strong=2 likely=3

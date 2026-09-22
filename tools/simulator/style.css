@@ -5,4 +5,4 @@
 @media(max-width:880px){main{padding:22px 20px}.lab{grid-template-columns:1fr;gap:24px}.device-section{position:static}.device{max-width:620px}.lab-note{display:none}h1{font-size:46px}footer{flex-direction:column;gap:8px}.intro{padding:20px 0}.version{display:none}.card{padding:20px}.connection{font-size:8px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 
-.all-scents{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;align-items:center}.all-scents select{background:#171728;color:#eee;border:1px solid #6de2c0;border-radius:8px;padding:10px;font:inherit}
+.all-scents{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;align-items:center}.all-scents select,#watch-category{background:#171728;color:#eee;border:1px solid #6de2c0;border-radius:8px;padding:10px;font:inherit}

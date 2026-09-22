@@ -28,7 +28,7 @@ Battery mode defaults off with raw ADC only. Settings provides three meter-refer
 | Display and four-corner touch | Pending hardware test |
 | Missing/full/interrupted SD | Pending hardware test |
 | Controlled Wi-Fi/BLE capture loss | Pending lab |
-| Minimum internal heap >=80 KB | Final short no-card run: current 86,244–86,824 B; SDK-reported minimum 79,896 B. Minimum target not yet met; see below. |
+| Minimum internal heap >=80 KB | Latest Tag Watch boot smoke: current 85,668–86,248 B; SDK-reported minimum 79,304 B. Minimum target not yet met; see below. |
 | Eight-hour soak | Pending hardware test |
 | Boot / screen-only / Wi-Fi / BLE / full-cycle current | Pending meter |
 | Audio current and charging thermals | Pending meter |
@@ -78,4 +78,28 @@ A five-minute USB run with application SHA-256 `49bc639f71366299d6690470a979096f
 
 This is a short USB-powered, no-card test, not an acceptance pass. The reported minimum remains 76 B below the existing 80,000 B gate. The last sample recorded 10,831 Wi-Fi and 12,659 BLE callbacks with 10,250 combined queue drops; no calibrated capture-loss result is claimed. High ambient-load queue pressure, minimum-heap headroom with SD, power interruption, and the eight-hour soak remain outstanding.
 
-The final installed application (`f40710edaaa763682922f5de1962f1a1e7801e7eb95619c2adf018e825d7bf31`, 1,200,160 B) includes a four-pixel card-height correction to hide underlying status text. Esptool verified the application write; NVS was not erased. A follow-up reboot loaded the saved state and resumed both radios. In the 135-second follow-up capture, current heap was 86,244–86,824 B, the reported minimum was 79,896 B, and the largest block was 77,824 B. Radio and save errors stayed zero through two automatic save intervals. The minimum acceptance gate remains open. Aggregate serial evidence is retained in [the measurement record](measurements/2026-09-22-heap.txt).
+The earlier compact-alert application (`f40710edaaa763682922f5de1962f1a1e7801e7eb95619c2adf018e825d7bf31`, 1,200,160 B) includes a four-pixel card-height correction to hide underlying status text. Esptool verified the application write; NVS was not erased. A follow-up reboot loaded the saved state and resumed both radios. In the 135-second follow-up capture, current heap was 86,244–86,824 B, the reported minimum was 79,896 B, and the largest block was 77,824 B. Radio and save errors stayed zero through two automatic save intervals. The minimum acceptance gate remains open. Aggregate serial evidence is retained in [the measurement record](measurements/2026-09-22-heap.txt).
+
+### Tag Watch installation — 2026-09-22
+
+The 1,205,520-byte release application, SHA-256 `955acae092fc7ddbda2b4fe68effd4a2049113468cb5c8839329fc85155dad7d`, was written at `0x10000` and hash-verified. A private 24 KB pre-update NVS backup was saved outside the repo. NVS, bootloader and partition-table regions were not erased; saved-state loading resumed radio operation. Travel Watch starts off and requires WATCH → Start Travel Watch.
+
+A 45-second USB boot smoke test produced two health snapshots: current heap 85,668–86,248 B, minimum 79,304 B, largest block 77,824 B; no reported radio/save errors or observed panic/watchdog reset. The second sample had 1,286 Wi-Fi callbacks, 1,511 BLE callbacks and 1,191 combined queue drops; this is uncontrolled ambient traffic, not a capture-loss measurement. The capture does not cover a full periodic save interval or an armed ten-minute watch. The minimum-heap gate remains unmet, and physical flashing/contrast/touch, moving versus stationary tags, address rotation and long soak still require testing. SD work remains on hold.
+
+### Tag Watch troubleshooting
+
+The user reported ordinary tag alerts while Travel Watch had been armed for over ten minutes. The existing health output did not expose individual watch-window progress, so it cannot establish whether identity changes, gaps or a timing issue prevented qualification. Inspection found that the UI sampled its clock once per frame while receiving up to sixteen asynchronous radio observations: a later packet could then be rejected by Watch/Follow as being in the future. The receive loop now refreshes the clock per observation. Watch progress shows per-identity elapsed time/minute bins/last-seen age and gap/filter/clock counters; the ten-minute/eight-bin rule is unchanged.
+
+A serial read intended to be passive captured `POWERON_RESET` and fresh boot counters. Opening the CH340 port apparently toggled the reset circuitry despite no explicit reset command, clearing the active watch. Avoid opening serial during a field watch. The new progress UI supports diagnosis directly on the display. This reset was introduced during troubleshooting; it does not explain the user’s earlier report.
+
+The timing/progress release (1,208,912 bytes; SHA-256 `949622ebb4df9e2ef08b3e70baf09a9cf4fb0899a753c7c5514a9a9eb3c4c164`) was subsequently flashed at `0x10000` and esptool verified the written hash. A fresh private NVS backup was saved outside the repo. NVS, calibration and saved settings were retained; no SD action was performed. No serial monitor was opened afterward, to avoid disturbing the next manually armed watch. Physical progress/alert behavior awaits user feedback; no new boot-health/heap acceptance result is claimed for this image.
+
+### Full Home title correction — 2026-09-22
+
+The title/layout correction was flashed to the Hosyond application partition at `0x10000` and the written-data hash verified: 1,209,456 bytes, SHA-256 `b214a45abc230cf99192ba2980a1b25d25cf06d4343f519b295ffc069d8200d8`. A fresh 24 KB NVS backup was retained privately outside the repository; calibration and saved settings were preserved. The update rebooted the board, so Travel Watch must be manually armed again. No serial monitor was opened afterward and no SD operation was performed. Display confirmation and physical Watch results remain pending.
+
+### Tag Watch field confirmation — 2026-09-22
+
+After the title/layout update, the user reported that the possible-following alert had triggered, then confirmed that the background flashed red while the dog and controls remained visible. This is user-observed alert/display confirmation on the Hosyond running the last installed application (`b214a45abc230cf99192ba2980a1b25d25cf06d4343f519b295ffc069d8200d8`). No firmware change, reboot or serial connection was made for this confirmation.
+
+The triggering tag category, exact elapsed time, progress counters and motion conditions were not supplied. The cause of the earlier delayed/missing warning is still unconfirmed. Controlled moving/stationary trials, address rotation, measured timing, touch actions and long-run acceptance remain open; SD testing stays on hold.

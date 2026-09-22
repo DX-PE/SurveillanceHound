@@ -24,6 +24,10 @@ The implementation uses 16 saved ignore slots and six wardrobe choices (classic 
 | Guided first run | Dog-led control walkthrough and confidence explanation, replayable from Settings. Interactive panel color-order/inversion check. | Retain touch calibration and privacy/region choices; validate panel controls against supported hardware revisions. |
 | Hound Pack | Optional nearby Hound visits with dog appearance/name and potentially short messages. | Future design only. Explicit opt-in is required because communication transmits, unlike default passive scanning. Define identity, pairing, privacy, authenticity and radio scheduling before implementation. |
 
+## Tag Watch
+
+Implemented a manual Travel Watch for repeated AirTag/Find My, Samsung, Tile and Google tag presence: ten minutes, eight distinct minute bins, gaps no longer than two minutes. The compact possible-following warning slowly flashes the background red; steady red, acknowledgement, Ignore, Snooze and Stop remain available. A simulator time-jump preview exercises the same threshold. Per-tag status shows observation time, qualifying minutes and last-seen age, with reset counters and alert-filter hints. The table is bounded and volatile, with keyed identifiers and no new persisted record. This does not establish movement, ownership or intent; address rotation and table capacity can cause missed warnings. The user confirmed the alert trigger and red flashing on the Hosyond board, with the dog and controls visible. Controlled RF validation and broader physical acceptance remain pending.
+
 ## Existing deferred work and release gates
 
 - Phone GPS/companion work remains deferred at the user's request.

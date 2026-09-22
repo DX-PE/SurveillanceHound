@@ -164,3 +164,33 @@ All eight host CTest targets passed with ASan/UBSan (`detect_leaks=0` because of
 The five-minute no-card hardware run and its exact application hash are recorded in [HARDWARE](HARDWARE.md); it preceded only the final card-height adjustment. The minimum-heap acceptance gate, controlled capture-loss test, SD work and long soak remain open.
 
 The final release image was then hash-verified on the Hosyond and rebooted with the existing NVS state. A 135-second follow-up recorded 86,244–86,824 B current heap, a 79,896 B minimum, a 77,824 B largest block, and zero radio/save errors through two save intervals. See the aggregate [serial record](measurements/2026-09-22-heap.txt). The local preview was rebuilt and restarted at `http://127.0.0.1:8765/`.
+
+## 2026-09-22 — Tag Watch
+
+Added the manual ten-minute tag-presence watch, bounded to sixteen keyed identities, with slow red background flashing, a steady alternative, ACK/Ignore/Snooze, and a synthetic clock-advance preview. This is a possible-following clue, not movement confirmation. The new tracker is statically bounded to 544 bytes; no NVS layout or SD behavior changed.
+
+All nine host CTest suites passed under ASan/UBSan, including 271 Tag Watch checks and 100,000 fuzz-smoke inputs. LeakSanitizer was disabled because of the sandbox/ptrace environment. Production Samsung FD5A detections reached the warning through the normal UI event path. Generated-rule/assets checks, passive/static invariants, Ruff and C++ formatting passed. All four ESP32 profiles (release/debug/test/demo) built with the pinned ESP-IDF 6.0.2. Release image SHA-256: `955acae092fc7ddbda2b4fe68effd4a2049113468cb5c8839329fc85155dad7d`.
+
+Browser checks exercised the preview button and acknowledgement, confirmed zero demo XP for the test sequence, and inspected warning contrast and controls. Deterministic native renders and adapter checks covered portrait/landscape, warning, review and acknowledgement; rendering tests covered all themes/scenes and tile bounds.
+
+The Hosyond release application was flashed at `0x10000` and esptool verified its written hash. A fresh 24 KB NVS backup was retained privately outside the repository; the NVS, bootloader and partition-table regions were not erased. A 45-second boot check resumed Wi-Fi/BLE with zero reported radio/save errors and no observed panic/watchdog reset. Current heap was 85,668–86,248 B; the minimum was 79,304 B and largest block 77,824 B. This is a boot smoke test with Travel Watch initially off, not a physical warning or moving-tag validation. The existing minimum-heap acceptance gate, physical display/touch, moving/stationary RF trials, crowd capacity, address rotation and long soak remain open. SD testing is still on hold.
+
+## 2026-09-22 — Watch timing and visible progress
+
+The user reported ordinary tag alerts after more than ten minutes armed, without a Watch warning. Inspection found that a packet received during a UI batch could have a timestamp later than the frame-start clock, causing Watch/Follow to reject it as future data. The board now refreshes its monotonic clock before handling each parsed observation. This fixes that edge case; it does not establish that it caused the user’s earlier missing warning. No RF continuity or address-rotation evidence was captured for that run.
+
+Watch progress now shows up to sixteen per-identity timers, occupied-minute counts, last-seen age, classification score and ACK state, with bounded gap/filter/clock counters and configuration hints. It opens on arming and from the armed Home shortcut. Controls, review, Snooze and Ignore remain separate reachable actions. The ten-minute/eight-minute-bin/two-minute-gap requirements, category/score filters, and stored data formats are unchanged. The tracker still passes its 544-byte static bound.
+
+All nine ASan/UBSan host suites passed, including 328 Tag Watch checks. Tests cover stale-frame timestamps, expiry/filter counting, counter saturation, navigation, changing page size and guarded rendering in both orientations. Native simulator images were inspected for populated and empty progress pages. Generated-data checks, passive invariants, Ruff and C++ formatting passed; release/debug/test/demo firmware builds passed. The simulator builds with its normal unoptimized host configuration. An optional `-O3` host build reported a GCC 15 array-bounds warning in the unchanged small-array `std::sort` path in engine.cpp; no firmware build failed.
+
+Release application: 1,208,912 bytes, SHA-256 `949622ebb4df9e2ef08b3e70baf09a9cf4fb0899a753c7c5514a9a9eb3c4c164`. Firmware write/field status is recorded in HARDWARE.md. LeakSanitizer remains disabled for the sandbox environment. The earlier short heap captures do not validate this updated runtime or an armed ten-minute watch.
+
+## 2026-09-22 — Restore full Home title
+
+Restored SURVEILLANCE HOUND on the Home screen: one line in landscape and two lines in portrait. Shared layout rectangles keep the Book, Watch and active Follow controls aligned with their touch targets without overlapping the title. All nine existing ASan/UBSan host suites passed (LeakSanitizer disabled under the sandbox); release/debug/test/demo firmware profiles built. Native frames were visually checked in both orientations with and without Follow, and shortcut navigation was exercised in each orientation. The local browser simulator was rebuilt and refreshed.
+
+Release application: 1,209,456 bytes, SHA-256 `b214a45abc230cf99192ba2980a1b25d25cf06d4343f519b295ffc069d8200d8`. The Hosyond application-only flash passed esptool's written-data verification. Watch timing and qualification behavior are unchanged; physical Watch feedback remains pending.
+
+## 2026-09-22 — User-confirmed Watch warning on Hosyond
+
+The user reported the possible-following alert triggering on the board and confirmed that the background flashed red with the dog and controls still visible. This supplies the previously pending basic alert/display confirmation for the latest installed title/layout release. Exact qualification time, triggering identity/category, reset counters and movement were not recorded, so the earlier delay remains unexplained and controlled RF/timing acceptance remains open. Documentation only was updated; the running board was left untouched.
