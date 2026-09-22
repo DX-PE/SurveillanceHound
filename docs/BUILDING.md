@@ -59,6 +59,12 @@ cmake --build build-analysis
 
 The SDK's ESP32 NimBLE header unconditionally enables host privacy helpers. In this exact version, compiling only the observer role leaves `ble_sm_alg_encrypt` unresolved; enabling Central with its default GATT client provides the SDK helper. The application only calls passive discovery. Peripheral and broadcaster roles are disabled; the application has no connection or GATT operation calls. `check_static.py` guards these boundaries. Do not claim absence of transmit-capable code inside the vendor SDK.
 
+## Passive-scanner memory budget
+
+The default NimBLE MSYS-1, MSYS-2 and ACL data pools are limited to four blocks each because this application performs no connections, GATT requests or writes. Advertising reception keeps the SDK's eight advertising-event buffers and 30 high-priority event buffers; the Wi-Fi and raw-observation queue capacities are unchanged. Revisit these limits before adding any connecting role. When using an older generated `sdkconfig`, apply the new counts there or regenerate it from the checked-in defaults; IDF does not overwrite existing configuration choices automatically.
+
+The eight-entry storage queue carries small tagged payloads. Up to two separately reserved state snapshots cover saves/sleep, including a snapshot currently being persisted. A queued snapshot is immutable until the worker finishes; exhausted slots or a full queue return failure, and a failed enqueue releases its reservation. Queue payloads are statically checked as trivially copyable, with no heap-owned objects. Persisted NVS record formats, storage stack allocation and SD behavior are unchanged.
+
 ## Development artifacts
 
 ```sh

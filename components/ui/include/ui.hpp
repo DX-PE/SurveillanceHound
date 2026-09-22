@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
-#include "sniffer/core.hpp"
+#include "sniffer/appearance.hpp"
+#include "sniffer/companion.hpp"
 #include "sniffer/display.hpp"
+#include "sniffer/follow.hpp"
 namespace sniffer::ui {
 enum class Screen {
     Welcome,
@@ -21,7 +23,15 @@ enum class Screen {
     Clock,
     Battery,
     ClearWarning,
-    SelfTest
+    SelfTest,
+    ScentBook,
+    ScentCard,
+    Wardrobe,
+    AlertActions,
+    Ignored,
+    Follow,
+    Appearance,
+    Display
 };
 enum Request : uint32_t {
     Save = 1,
@@ -35,7 +45,8 @@ enum Request : uint32_t {
     Rotate = 256,
     Pause = 512,
     ClearLogs = 1024,
-    Sleep = 2048
+    Sleep = 2048,
+    Invert = 4096
 };
 enum class SnackPhase { None, Turn, Approach, Chew, Happy };
 struct SnackPose {
@@ -48,6 +59,56 @@ class View {
     Settings &settings;
     Pet &pet;
     Screen screen{Screen::Welcome};
+    Companion companion{}, preview_companion{};
+    std::array<uint8_t, 32> identity_key{};
+    uint64_t snooze_until{}, preview_snooze_until{}, unlock_until{};
+    uint32_t preview_xp{};
+    uint8_t unlocked_outfit{};
+    int book_page{}, scent_index{}, scent_page{}, wardrobe_index{}, ignored_page{};
+    Detection action_detection{};
+    Companion &collection() {
+        return demo ? preview_companion : companion;
+    }
+    const Companion &collection() const {
+        return demo ? preview_companion : companion;
+    }
+    uint64_t snoozed_until() const {
+        return demo ? preview_snooze_until : snooze_until;
+    }
+    uint64_t identity(const Detection &) const;
+    bool alert_allowed(const Detection &) const;
+    void reset_progress();
+    void open_actions(const Detection &d);
+    sniffer::Appearance appearance{}, preview_appearance{};
+    sniffer::Appearance &look() {
+        return demo ? preview_appearance : appearance;
+    }
+    const sniffer::Appearance &look() const {
+        return demo ? preview_appearance : appearance;
+    }
+    uint32_t pets{};
+    bool speaking() const {
+        return look().speech && (happy_until > now ||
+                                 (look().speech == 2 ? now % 12000 < 8000 : now % 24000 < 5000));
+    }
+    FollowScent follow{};
+    bool listening() const {
+        return !paused && (demo || scanning);
+    }
+    ScentSignal signal() const {
+        return follow.state(
+            now, listening() && (settings.enabled_categories & (1U << unsigned(follow.category))));
+    }
+    void follow_scent(const Detection &d) {
+        follow.select(d, now);
+        alert_until = 0;
+        screen = Screen::Follow;
+    }
+    void observe(const Observation &o, bool synthetic = false) {
+        if (!paused && synthetic == demo && o.ms <= now &&
+            (settings.enabled_categories & (1U << unsigned(follow.category))))
+            follow.observe(o, synthetic);
+    }
     uint32_t requests{};
     uint64_t now{}, alert_until{}, meal_until{}, happy_until{};
     Category meal_category{Category::FLIPPER};
@@ -73,6 +134,17 @@ class View {
     size_t recent_count{};
     std::array<uint32_t, 3> counts{};
     std::array<char, 64> notice{};
+    uint32_t largest_heap{};
+    bool low_heap{};
+    void memory_status(uint32_t free, uint32_t minimum, uint32_t largest) {
+        heap = free;
+        min_heap = minimum;
+        largest_heap = largest;
+        low_heap = free < 80000;
+    }
+    const char *home_notice() const {
+        return notice[0] ? notice.data() : low_heap ? "LOW HEAP - SEE DIAGNOSTICS" : "";
+    }
     int width() const {
         return display::width(settings.portrait);
     }

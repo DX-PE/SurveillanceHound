@@ -20,22 +20,62 @@ BOOT short press cycles basic screens after onboarding. Long press mutes. Initia
 
 Battery mode defaults off with raw ADC only. Settings provides three meter-referenced ADC/voltage calibration points. Only a valid, explicitly enabled calibration displays voltage and estimated Li-ion percentage. Low warning is 3.5 V; five consecutive samples at or below 3.3 V request state-save, SD-flush and deep sleep. These provisional thresholds need characterization with the actual cell and load. BOOT wakes from sleep. No battery runtime estimate is provided. Before enabling battery operation, measure GPIO34 at three battery voltages, verify connector polarity and protection, and characterize low/critical thresholds. Use USB power for initial bring-up. The audio amplifier stays disabled between short effects and sound defaults off.
 
-## Measurements (not yet performed)
+## Acceptance measurements
 
 | Measurement | Result |
 |---|---|
-| 50 USB cold boots | Pending board |
-| Display and four-corner touch | Pending board |
-| Missing/full/interrupted SD | Pending board |
+| 50 USB cold boots | Pending hardware test |
+| Display and four-corner touch | Pending hardware test |
+| Missing/full/interrupted SD | Pending hardware test |
 | Controlled Wi-Fi/BLE capture loss | Pending lab |
-| Minimum internal heap >=80 KB | Pending runtime measurement |
-| Eight-hour soak | Pending board |
+| Minimum internal heap >=80 KB | Final short no-card run: current 86,244–86,824 B; SDK-reported minimum 79,896 B. Minimum target not yet met; see below. |
+| Eight-hour soak | Pending hardware test |
 | Boot / screen-only / Wi-Fi / BLE / full-cycle current | Pending meter |
 | Audio current and charging thermals | Pending meter |
 | Three-point battery ADC calibration | Pending meter |
 
-There is no hardware-backed claim that these tests passed. Record board revision, build hash, SD model, supply, sample sizes, measurements, failures and exact reproduction steps here when testing.
+These acceptance checks have not all passed; the limited bring-up measurements below do not replace them. Record board revision, build hash, SD model, supply, sample sizes, measurements, failures and exact reproduction steps here when testing.
 
 ## Available USB C3
 
 The receive-only ESP32-C3 harness was tested with the shared radio scheduler, parsers and rules. See [C3_RADIO_TEST.md](C3_RADIO_TEST.md). This does not replace any E32R40T measurements above.
+
+## First Hosyond USB bring-up — 2026-09-22
+
+The user replaced the C3 with the Hosyond 4-inch display board. USB enumerates as a CH340 serial converter (`1a86:7523`) at `/dev/ttyUSB0`, stable path `/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0`. ROM interrogation reports ESP32-D0WD-V3 revision 3.1, dual core, 40 MHz crystal and 4 MB flash (flash ID manufacturer `c4`, device `6016`). The panel/touch revision still requires visual confirmation; USB identification alone does not identify the LCD controller.
+
+A full 4,194,304-byte pre-Hound flash backup was saved outside the repository at `/home/jascha/Documents/ChatGPT/Surveillance Sniffer/hardware-backups/hosyond-4inch-before-hound-20260922.bin`. Its SHA-256 is `445f6fcb210442777f04028f3ad2022bd1c7231b5d9907309d8514f863978315`. Retain it locally; it includes the board's original settings. The original partition map used NVS at `0x9000/0x5000`, OTA data at `0xe000/0x2000`, app0 at `0x10000/0x300000`, SPIFFS at `0x310000/0xe0000` and coredump at `0x3f0000/0x10000`.
+
+The current release-profile build, including Dog Park and Follow Scent, was written at the standard bootloader/partition/application offsets. Esptool verified the written hashes. Application: 1,195,552 bytes; SHA-256 `34c0bdace02b3ce2cf288749b0b4445e035caf552ecaa8c62fb916670cd56f78`. Existing NVS was not erased. The ESP-IDF 6.0.2 bootloader loaded the application successfully and firmware reached SD initialization. The initial serial capture reports `sdmmc_card_init failed (0x107)`; SD is unavailable. Display appearance, three-point touch calibration and first-run completion require the user's physical observations. This is not a completed hardware acceptance test.
+
+To restore the complete original image if needed, stop serial monitoring and use the pinned SDK's esptool:
+
+```sh
+python -m esptool --chip esp32 --port /dev/ttyUSB0 write-flash 0x0 "/home/jascha/Documents/ChatGPT/Surveillance Sniffer/hardware-backups/hosyond-4inch-before-hound-20260922.bin"
+```
+
+### Display polarity correction
+
+The user confirmed that the application displayed, but reported a white background and blue-colored dogs in the default dark theme. That is consistent with inverted panel colors. The board initialization was changed from ST7796 `INVON` (`0x21`) to `INVOFF` (`0x20`); RGB/BGR ordering and orientation were left unchanged for this first correction. The release build passes. Corrected application SHA-256: `baa0d87111f1593cad1aef2a9ee50705b90202a3b6ecef98435ba854005dd613` (1,195,552 bytes). Only the application was replaced, so NVS settings/calibration remain intact. The user confirmed that the corrected colors look right.
+
+### Saved inversion control and menu organization
+
+Settings now opens on the Hound page: Wardrobe, Atmosphere, Scent Book, Ignored scents and Snooze/Resume. More names each next group (Display, Alerts, Data, Maintenance, Tools). **Settings → More: Display → Display options → Panel inversion** applies the ST7796 polarity command immediately and saves the choice. It defaults off on this unit. Demo has a temporary inversion preference; leaving demo restores the real preference. The host simulator complements RGB565 pixels to preview the panel behavior.
+
+Appearance records upgrade from version 1 to version 2 within the existing V5 generation format. The frozen older record is still accepted with a valid CRC and version, its cosmetic fields are retained, and inversion defaults off. Current records remain mandatory; corrupt or missing records do not silently reset preferences. A 24 KB pre-upgrade settings backup is retained outside the repo as `hardware-backups/hosyond-before-inversion-setting-nvs-20260922.bin` beside the full original backup.
+
+SD testing is explicitly on hold at the user's request. Keep the card out until the storage test step is requested.
+
+The combined saved-inversion/menu update was subsequently flashed and hash-verified: application 1,197,328 bytes, SHA-256 `1c9c757370659b80762740c8a06d1913753a50463ed53b67f2c21d70206d1f36`. A 25-second reset/startup capture reached SD initialization with only the expected missing-card errors and no observed panic, watchdog warning or reboot. The user still needs to exercise the new inversion toggle and persistence on the physical screen. SD tests remain paused.
+
+### Low-heap and repeated-alert correction — 2026-09-22
+
+The user reported approximately 70,000 B free and a persistent low-heap notice, repeated Strong/Likely count increases around two Samsung tags and an AirTag, and non-feeding alerts covering the dog. The warning previously counted all internal-memory capabilities and wrote a notice that was never cleared on recovery. Diagnostics now explicitly measures `MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT`; the warning still uses 80,000 B of current free space and clears independently of the minimum watermark.
+
+Unused connection-data pools were reduced without shrinking advertising-event buffers or radio queues. The storage queue now has eight small messages and two immutable save snapshots rather than eight full saved-state copies. The storage task still has its original 10,240-byte stack. NVS formats, calibration, appearance, pet progress and saved ignores are retained. SD remains absent and testing remains on hold.
+
+A five-minute USB run with application SHA-256 `49bc639f71366299d6690470a979096f3dc5d20430a873bc6ec57642bf94dc1e` measured ten aggregate snapshots: current heap 86,276–86,856 B, SDK-reported minimum 79,924 B and largest block 77,824 B. Final free stack watermarks were UI 3,864 B / radio 3,092 B / BLE 1,332 B / storage 3,156 B. Both radios received; radio errors and NVS save errors stayed zero across the periodic saves. No crash or watchdog reset appeared. Strong stayed at 2; Likely varied from 0 initially to 2–4, rather than monotonically increasing. Ambient matches are not a controlled census of the user's three physical tags.
+
+This is a short USB-powered, no-card test, not an acceptance pass. The reported minimum remains 76 B below the existing 80,000 B gate. The last sample recorded 10,831 Wi-Fi and 12,659 BLE callbacks with 10,250 combined queue drops; no calibrated capture-loss result is claimed. High ambient-load queue pressure, minimum-heap headroom with SD, power interruption, and the eight-hour soak remain outstanding.
+
+The final installed application (`f40710edaaa763682922f5de1962f1a1e7801e7eb95619c2adf018e825d7bf31`, 1,200,160 B) includes a four-pixel card-height correction to hide underlying status text. Esptool verified the application write; NVS was not erased. A follow-up reboot loaded the saved state and resumed both radios. In the 135-second follow-up capture, current heap was 86,244–86,824 B, the reported minimum was 79,896 B, and the largest block was 77,824 B. Radio and save errors stayed zero through two automatic save intervals. The minimum acceptance gate remains open. Aggregate serial evidence is retained in [the measurement record](measurements/2026-09-22-heap.txt).

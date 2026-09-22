@@ -3,6 +3,7 @@
 #include "sniffer/core.hpp"
 #include "sniffer/json.hpp"
 #include "state.hpp"
+#include "storage_message.hpp"
 #include "ui.hpp"
 #include <algorithm>
 #include <cstdio>
@@ -26,7 +27,95 @@ const Rule &rule(std::string_view id) {
             return r;
     std::abort();
 }
+void storage_message_tests() {
+    using namespace storage::detail;
+    Snapshots snapshots;
+    storage::State s;
+    s.settings.name[0] = 'A';
+    int first = snapshots.claim(s);
+    s.settings.name[0] = 'B';
+    int second = snapshots.claim(s);
+    CHECK(first >= 0 && second >= 0 && first != second);
+    s.settings.name[0] = 'C';
+    CHECK(snapshots.claim(s) == -1);
+    CHECK(snapshots.get(first).settings.name[0] == 'A');
+    CHECK(snapshots.get(second).settings.name[0] == 'B');
+    snapshots.release(second);
+    CHECK(snapshots.claim(s) == second);
+    CHECK(snapshots.get(first).settings.name[0] == 'A');
+    CHECK(snapshots.get(second).settings.name[0] == 'C');
+    snapshots.release(first); // Models queue-send failure returning the claimed slot.
+    CHECK(snapshots.claim(s) == first);
+    Message sent{}, received{};
+    sent.op = Op::Save;
+    sent.value = first;
+    std::memcpy(&received, &sent, sizeof(sent));
+    CHECK(received.op == Op::Save && received.value == first);
+    sent.op = Op::Record;
+    auto &r = sent.payload.emplace<Record>();
+    r.detection.category = Category::SAMSUNG_TAG;
+    r.detection.score = 85;
+    r.token[0] = 'x';
+    r.region = 1;
+    std::memcpy(&received, &sent, sizeof(sent));
+    const auto &copied = std::get<Record>(received.payload);
+    CHECK(received.op == Op::Record && copied.detection.category == Category::SAMSUNG_TAG);
+    CHECK(copied.detection.score == 85 && copied.token[0] == 'x' && copied.region == 1);
+    sent.op = Op::Diagnostics;
+    auto &text = sent.payload.emplace<std::array<char, 256>>();
+    std::snprintf(text.data(), text.size(), "test diagnostics");
+    std::memcpy(&received, &sent, sizeof(sent));
+    CHECK(std::string_view(std::get<std::array<char, 256>>(received.payload).data()) ==
+          "test diagnostics");
+    snapshots.release(first);
+    snapshots.release(second);
+}
+void compact_alert_tests() {
+    for (bool portrait : {false, true}) {
+        Settings settings;
+        settings.portrait = portrait;
+        settings.onboarded = true;
+        Pet pet;
+        ui::View view(settings, pet);
+        view.screen = ui::Screen::Home;
+        view.now = 10000;
+        view.scanning = true;
+        auto render = [&]() {
+            std::vector<uint16_t> frame(view.width() * view.height());
+            for (int y = 0; y < view.height(); y += view.tile_rows())
+                view.render(
+                    y, std::span(frame).subspan(y * view.width(), view.width() * view.tile_rows()));
+            return frame;
+        };
+        for (bool meal : {false, true}) {
+            Detection d{};
+            d.category = Category::SAMSUNG_TAG;
+            d.score = 85;
+            d.meal = meal;
+            view.event(d);
+            view.alert_until = 0;
+            auto without = render();
+            view.alert_until = view.now + 5000;
+            auto with = render();
+            bool dog_visible = true, sniff_visible = true;
+            for (int y = 95; y < 250; ++y)
+                for (int x = 12; x < 294; ++x)
+                    dog_visible &= without[y * view.width() + x] == with[y * view.width() + x];
+            int sx = portrait ? 16 : 306, sy = portrait ? 398 : 226, sw = portrait ? 288 : 162;
+            for (int y = sy; y < sy + 32; ++y)
+                for (int x = sx; x < sx + sw; ++x)
+                    sniff_visible &= without[y * view.width() + x] == with[y * view.width() + x];
+            CHECK(dog_visible && sniff_visible && with != without);
+            view.tap(portrait ? 210 : 360, portrait ? 373 : 201);
+            CHECK(view.screen == ui::Screen::AlertActions &&
+                  view.action_detection.category == d.category);
+            view.screen = ui::Screen::Home;
+        }
+    }
+}
 int main() {
+    storage_message_tests();
+    compact_alert_tests();
     Json j;
     CHECK(j.parse("{\"a\":[1,true,null],\"b\":\"hello\\nworld\"}"));
     char value[32];
@@ -216,7 +305,7 @@ int main() {
     old.meal_key[0] = 1;
     storage::State upgraded;
     CHECK(storage::migrate(old, upgraded));
-    CHECK(upgraded.pet.xp == 123 && upgraded.settings.research && upgraded.version == 3);
+    CHECK(upgraded.pet.xp == 123 && upgraded.settings.research && upgraded.version == 5);
     CHECK(storage::valid_current(upgraded));
     upgraded.settings.threshold = 0;
     CHECK(!storage::valid_current(upgraded));

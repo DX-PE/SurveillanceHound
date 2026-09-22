@@ -18,8 +18,13 @@ The application uses passive Wi-Fi management reception and passive legacy BLE s
 - **67 enabled rules:** Flock, Axon, glasses, skimmer modules, Raven, Apple Find My/AirTag, Tile, Samsung Tag, Google Tag, Drone, ALPR, Camera, Ring, iBeacon, Flipper, Pwnagotchi, Pineapple, deauth bursts and possible evil twins. Vendor, name and generic-service clues retain conservative confidence limits; see [detection coverage and limitations](docs/DETECTIONS.md).
 - **Bounded detection:** 128-entry observation and meal caches, confidence fusion, cooldowns, probe-request parsing, 128-bit BLE UUIDs, structured uncompressed Pwnagotchi advertisements, legacy Remote ID assembly and corroborated Wi-Fi security differences.
 - **Evidence and controls:** 32 recent events paged four at a time, frozen evidence details, separate detector and alert switches, and volatile Remote ID details when received.
+- **Follow Scent:** select a logged sighting for fresh RSSI, a 30-second chart, reception trend and waiting/lost/paused states. Raw address and samples remain in RAM; this does not estimate direction or distance.
+- **Atmosphere:** Midnight, Sunset and Daylight themes; Signal Grid, Dog Park and Rooftops scenes; optional speech bubbles, varied petting reactions and a compact patrol panel. Reduced animation stays available.
+- **Scent Book:** illustrated field-guide cards for all 19 categories, persistent observation totals, confidence and manual first/last times, plus recent matching evidence.
+- **Dog wardrobe:** five original accessories alongside the classic look, with previews, XP/discovery unlocks and saved equipment for every dog.
+- **Snooze/Ignore:** 5/15/60-minute global alert snooze, early resume, and 16 saved device/category ignores with individual removal. Pop-ups and sounds are quieted; logs, meals and discoveries continue.
 - **Local storage and privacy:** private HMAC identifiers by default, opt-in raw local MAC logging, rotated JSONL, complete-row validation, incomplete-tail recovery, corrupt-log write lockout, full-history export and confirmed log deletion.
-- **Device settings:** manual UTC, three-point battery calibration, optional voltage/estimated percentage, critical save/flush/sleep, brightness and muted-by-default audio effects.
+- **Device settings:** manual UTC, three-point battery calibration, optional voltage/estimated percentage, critical save/flush/sleep, brightness, saved panel inversion and muted-by-default audio effects.
 - **Diagnostics:** per-radio accepted/malformed counts, queue drops, task watermarks, heap, SD space, raw ADC and display/touch self-test.
 
 Firmware uses native **ESP-IDF 6.0.2**, pinned to `7101770dc6db2667b3c477cc31365dd1acd6db4e`, a C++20 portable core, and project-owned ST7796 display/XPT2046 touch drivers. Release, debug, test and demo build profiles are included.
@@ -39,15 +44,22 @@ python3 tools/run_local.py
 
 Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/). The script builds the native firmware UI and serves it on loopback. Click the device screen, choose a hound, try onboarding, or use the sample selector to preview any category's snack. Start sniffing before sending samples if the hound is asleep.
 
-The browser preview uses **synthetic events and RAM-only state**, even when a C3 is connected over USB. It does not display live USB radio data, write SD logs or award saved XP. Restarting the simulator resets the session. Press Ctrl+C to stop, or use `--port 8766` for another port.
+The browser preview uses **synthetic events and RAM-only state**, even when a C3 is connected over USB. It does not display live USB radio data, write SD logs or award saved XP. Demo samples fill a separate Scent Book and award session-only wardrobe XP. Repeating a sample category uses the same synthetic device, so Ignore can be tested. Restarting the simulator resets the session. Press Ctrl+C to stop, or use `--port 8766` for another port.
 
 | Control | Behavior |
 |---|---|
 | Home → Start/Stop sniffing | Pause/resume scanning; show the sleeping hound while stopped |
-| Settings → Rotation lock / View | Unlock, choose landscape or portrait, then lock the chosen orientation |
-| Settings → Alert types | Toggle pop-ups and sounds per category while retaining sightings; the confidence threshold still applies |
+| Settings → More: Display → Rotation lock / View | Unlock, choose landscape or portrait, then lock the chosen orientation |
+| Settings → More: Display → Alert types | Toggle pop-ups and sounds per category while retaining sightings; the confidence threshold still applies |
 | Detectors | Enable or disable observation processing for each category |
-| Settings → More, page 5 | Set UTC, calibrate battery, clear SD logs, run self-test or export history |
+| Home → BOOK | Browse all 19 field-guide cards, statistics and recent evidence |
+| Home → hound name / Settings → Dog wardrobe | Preview accessories, see requirements and equip unlocked gear |
+| Alert or Log → details → Snooze / Ignore | Quiet all alerts for 5/15/60 minutes or ignore the selected device/category |
+| Settings → first page | Manage ignored scents, resume alerts, open Scent Book, wardrobe or Atmosphere |
+| Settings → More: Display → Display options | Brightness, immediate saved Panel inversion toggle, animation and color/touch test |
+| Log → sighting → Follow Scent | Follow reception from that radio identity; Home → Follow returns to it |
+| Settings → Atmosphere | Cycle theme, background, speech frequency and compact panel |
+| Settings → Tools (page 6) | Set UTC, calibrate battery, clear SD logs, run self-test or export history |
 
 Manual UTC is marked as manual in records and resets after power loss. Battery mode defaults off; voltage and estimated percentage require a valid, explicitly enabled calibration against a meter. Power thresholds still require validation with the actual board and battery.
 
@@ -60,7 +72,7 @@ idf.py build
 ./tools/flash.sh /dev/ttyUSB0
 ```
 
-Replace the serial port with the display board's port. See [BUILDING](docs/BUILDING.md) for SDK installation, the four profiles, Docker, and development packaging. Start bring-up on USB power. The E32R40T display, touch, SD/NVS durability, audio and battery behavior still need physical validation.
+Replace the serial port with the display board's port. See [BUILDING](docs/BUILDING.md) for SDK installation, the four profiles, Docker, and development packaging. Start bring-up on USB power. The connected Hosyond displays Hound with correct colors after disabling inversion. Full touch, SD/NVS durability, audio and battery validation remain open; SD testing is on hold.
 
 ## Test an ESP32-C3 Super Mini
 
@@ -106,11 +118,52 @@ python3 tools/validate_export.py ./community-export
 
 Nothing is uploaded. Raw MACs, SSIDs, payloads and Remote ID serials/coordinates are excluded from sanitized exports. The device collects no GPS location. See [privacy](docs/PRIVACY.md) and [export format](docs/COMMUNITY_EXPORT.md).
 
-Version 1 and 2 saves migrate to version 3, preserving pet progress, privacy settings, recent meals and touch calibration. Old cat selection slots become Husky, Labrador and Dalmatian. Settings, pet and system state use CRC-protected generation slots in separate NVS namespaces. Simulator state is not persisted.
+Version 1, 2, 3 and 4 saves migrate to version 5, preserving pet progress, privacy settings, recent meals and touch calibration. Old cat selection slots become Husky, Labrador and Dalmatian. Settings, pet, system, companion and appearance state use CRC-protected generation slots in separate NVS namespaces. V4 and V5 commits require the companion record; V5 also requires the appearance record. Interrupted or corrupt state never silently discards ignores or preferences. Older saves start with Midnight / Signal Grid / occasional speech / detailed panel. The appearance record upgrades from version 1 to version 2 without changing the V5 generation scheme; existing theme/scene/speech/panel preferences are retained and inversion defaults off. Simulator state is not persisted.
+
+## Scent Book, outfits and quiet alerts
+
+Scent Book counts emitted observations, including repeat updates, rather than unique devices. First/last times are manual UTC when available; unset times remain unknown. Statistics start when this feature is installed or progress is reset. Existing saves retain XP and earn eligible XP outfits, without inventing historical sightings. Evidence pages use the latest 32 RAM log entries; they may be empty after reboot even when totals remain saved.
+
+| Outfit | Unlock |
+|---|---|
+| Classic | Available immediately |
+| Trail bandana | 25 XP |
+| Brass collar | 100 XP |
+| Raincoat | Discover 5 categories |
+| Detective cap | 300 XP |
+| Sunglasses | Discover 10 categories |
+
+Unlocks stay earned until **Reset progress**, which also clears the Scent Book and equipped outfit. Reset keeps observation logs and ignored devices. Snooze uses powered-on time, expires automatically, and resets on reboot. Stop/Start does not cancel snooze; Settings offers early resume. Ignore persists a keyed digest for the selected device and category, never a raw address. Rotating/changing addresses can alert again; unrelated devices in that category remain eligible. The 16-entry list never silently evicts an entry when full.
+
+All emulator-inspired ideas, selected work and future acceptance criteria are recorded in the [roadmap](docs/ROADMAP.md).
+
+## Recent signals and quiet alerts
+
+The home **Strong / Likely** totals count distinct radio/address/type identities seen within the last **90 seconds**, using the highest current confidence when several categories match one identity. Repeated updates refresh that identity instead of adding another count. The totals reuse the 128-entry detection cache, refresh every two seconds, and expire while sniffing is stopped. They are recent signals, not a verified inventory of physical tags: address rotation can temporarily add an identity, and Apple Find My clues also occur on compatible products other than AirTags. Disabled detector categories are excluded. Sound mute, snooze and per-device Ignore silence alerts but do not hide observed signals; Scent Book and logs continue counting emitted observations. Demo samples never add to the real totals.
+
+Home alerts always use a small card beside the dog in landscape or below it in portrait, including repeats that earn no meal. The dog animation, **Snooze / Ignore** and **Start / Stop sniffing** remain accessible. Eating starts only when a detection earns a meal; ordinary repeat tags have a 30-minute feeding cooldown, conservatively restored after reboot. Repeat alerts can therefore appear without another eating animation. For an immediate animation check, enable **Settings → Data → Demo mode** with sniffing running; synthetic Flipper/Pineapple meals occur every eight seconds without changing saved progress. Full evidence stays in the Log.
+
+**Diagnostics** reports byte-addressable internal heap, its boot minimum and the largest allocatable block (page 3). The 80,000-byte warning tracks current free space, clears when it recovers, and no longer overwrites other notices. The USB serial console prints aggregate memory, stack, radio/drop and save-error statistics every 30 seconds; it does not print discovered identifiers or payloads. See [hardware measurements](docs/HARDWARE.md) for the short run and remaining acceptance limits.
+
+## Settings order and panel inversion
+
+Settings always opens on **Hound**, with **Wardrobe, Atmosphere, Scent Book, Ignored scents and Snooze/Resume alerts**. The More button names the next page: **Display → Alerts → Data → Maintenance → Tools**, then back to Hound. Returning from a submenu keeps its parent page; tapping the main SET tab or cycling to Settings with BOOT returns to Hound.
+
+**Settings → More: Display → Display options → Panel inversion** changes the LCD color polarity immediately and saves it on the real device. Keep it **Off** on the tested Hosyond board; enabling it turns the dark background light and changes the dog colors. Its value is restored at boot. Demo inversion is temporary and the real setting is restored when leaving demo. The simulator previews the same color reversal without altering the underlying theme.
+
+## Follow Scent and atmosphere
+
+Open **Log**, select a sighting and tap **Follow Scent**. Selection waits for a new, valid reading from the same address, address type and radio. Live reception is at most five seconds old; after five seconds it shows the last reading and waits for a repeat, and after 15 seconds it shows **Signal lost**. The 30-second graph uses one latest reading per second, leaves gaps between sparse readings, and fades as data ages out. Trend compares recent samples; the dog reacts to the current reception level. Walls, antennas, channel hopping and advertisement intervals affect RSSI, so neither the graph nor the dog gives direction or exact distance.
+
+**Back to Hound** keeps the selected scent; tap **Follow** to reopen it. **Stop following** clears it without stopping scanning. Stop/Start scanning keeps the target but clears readings, waiting for a fresh sample after resuming. Selecting a new scent or changing demo mode resets the follow session; reboot clears it. Address rotation requires a new selection. A disabled detector suspends updates for its selected category. Follow readings bypass alert throttling but do not independently add log entries, discoveries or meals.
+
+In the browser, send a synthetic sighting first, select it through the device Log, and use **Follow a signal** below the device. Change reception, send one reading or enable **Repeat reading every second**. Disable repeat to test waiting/lost states. These readings are synthetic and do not use the USB board.
+
+**Settings → Atmosphere** cycles themes, scenes, speech (**Off / Occasional / Chatty**) and the patrol panel (**Detailed / Compact**). Tap **Preview on Hound** to return home. Petting triggers alternating replies and happy/head-tilt poses; the sleeping dog and important scanning/alert status remain visible with speech off. **Settings → More: Display → Animation: Reduced** freezes scene movement and dog animation. Real-device appearance is saved; demo appearance has its own temporary copy and cannot alter saved preferences. Reset progress keeps appearance choices.
 
 ## Remaining hardware work
 
-Follow [TEST_PLAN](docs/TEST_PLAN.md), record measurements in [HARDWARE](docs/HARDWARE.md), and track readiness in [STATUS](docs/STATUS.md). Display/touch bring-up, SD/NVS power interruptions, 50 cold boots, the eight-hour soak, the 80 KB runtime heap target, measured capture loss, battery calibration/current draw and controlled product-signature captures remain outstanding.
+Follow [TEST_PLAN](docs/TEST_PLAN.md), record measurements in [HARDWARE](docs/HARDWARE.md), and track readiness in [STATUS](docs/STATUS.md). Formal display/touch checks, SD/NVS power interruptions, 50 cold boots, the eight-hour soak, the 80 KB runtime heap target, measured capture loss, battery calibration/current draw and controlled product-signature captures remain outstanding.
 
 This hardware observes 2.4 GHz Wi-Fi and legacy BLE only. It does not cover 5/6 GHz Wi-Fi, BLE extended advertising or coded PHY. Phone GPS/companion work is deferred. No cloud service, active probing, sensitive-export path or on-device rule editor is included.
 

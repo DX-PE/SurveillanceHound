@@ -20,11 +20,27 @@ int main() {
     Settings s;
     Pet p;
     ui::View v(s, p);
+    v.memory_status(70000, 69000, 32768);
+    CHECK(v.low_heap && std::string_view(v.home_notice()) == "LOW HEAP - SEE DIAGNOSTICS");
+    CHECK(v.heap == 70000 && v.min_heap == 69000 && v.largest_heap == 32768);
+    CHECK(v.notice[0] == 0); // A health warning never becomes a sticky user notice.
+    std::snprintf(v.notice.data(), v.notice.size(), "CRITICAL BATTERY - SAVING AND SLEEPING");
+    CHECK(std::string_view(v.home_notice()) == "CRITICAL BATTERY - SAVING AND SLEEPING");
+    v.memory_status(80000, 69000, 40000);
+    CHECK(!v.low_heap && v.notice[0]);
+    v.notice[0] = 0;
+    CHECK(!v.home_notice()[0]); // Recovery clears the banner despite the older
+                                // minimum.
+    v.memory_status(79999, 69000, 40000);
+    CHECK(v.low_heap);
+    v.memory_status(90000, 69000, 40000);
+    CHECK(!v.low_heap);
     CHECK(v.width() == 480 && v.height() == 320 && s.rotation_locked);
     v.rotate();
     CHECK(!s.portrait && !v.requests);
     s.onboarded = true;
     v.screen = ui::Screen::Settings;
+    v.settings_page = 1;
     v.tap(30, 78);
     CHECK(!s.rotation_locked && (v.requests & ui::Save));
     v.requests = 0;
@@ -114,7 +130,7 @@ int main() {
         s.portrait = portrait;
         s.onboarded = true;
         v.screen = ui::Screen::Settings;
-        v.settings_page = 0;
+        v.settings_page = 1;
         v.tap(30, (portrait ? 80 : 66) + 4 * (portrait ? 55 : 34) + 10);
         CHECK(v.screen == ui::Screen::Alerts);
         for (int index = 0; index < int(category_count); ++index) {
@@ -231,7 +247,7 @@ int main() {
     old.calibration.ax = 0.23f;
     storage::State current{};
     CHECK(storage::migrate(old, current));
-    CHECK(current.version == 3 && current.settings.version == 2);
+    CHECK(current.version == 5 && current.settings.version == 2);
     CHECK(current.pet.xp == 321 && current.pet.meals == 17 && current.settings.character == 5 &&
           current.settings.region == 1);
     CHECK(current.settings.name == old.settings.name && current.settings.research &&

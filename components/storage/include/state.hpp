@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 #include "board.hpp"
-#include "sniffer/core.hpp"
+#include "sniffer/appearance.hpp"
+#include "sniffer/companion.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 namespace sniffer::storage {
 struct State {
-    uint32_t version{3};
+    uint32_t version{5};
     Settings settings{};
     Pet pet{};
     board::Calibration calibration{};
@@ -15,6 +16,8 @@ struct State {
     std::array<uint8_t, 32> meal_key{};
     uint32_t boots{}, reset_reason{};
     BatteryCalibration battery{};
+    Companion companion{};
+    Appearance appearance{};
 };
 // Frozen v2 layout for pre-completion Hound saves.
 struct StateV2 {
@@ -71,7 +74,7 @@ template <class S> inline bool valid_state(const S &s, uint32_t version) {
     return true;
 }
 inline bool valid_current(const State &s) {
-    if (!valid_state(s, 3))
+    if (!valid_state(s, 5) || !valid_companion(s.companion) || !valid_appearance(s.appearance))
         return false;
     for (const bool *p : {&s.settings.portrait, &s.settings.rotation_locked, &s.battery.enabled})
         if (*reinterpret_cast<const uint8_t *>(p) > 1)

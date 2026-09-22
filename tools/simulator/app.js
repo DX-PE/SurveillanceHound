@@ -4,6 +4,8 @@ const context = canvas.getContext('2d', {alpha: false});
 let pixels = context.createImageData(480, 320);
 let requests = Promise.resolve();
 let active = true;
+let following = false;
+let lastSignal = 0;
 
 async function display(response) {
   if (!response.ok) throw new Error(`Simulator returned ${response.status}`);
@@ -28,17 +30,22 @@ async function display(response) {
     pixels.data[i * 4 + 3] = 255;
   }
   context.putImageData(pixels, 0, 0);
+  following = state.following;
+  document.querySelector('#send-signal').disabled = !following || state.paused;
   document.querySelector('#pet-name').textContent = state.name;
   document.querySelector('#pet-type').textContent = state.pet;
   document.querySelector('#mood').textContent = state.mood;
   document.querySelector('#fullness').textContent = state.fullness;
   document.querySelector('#events').textContent = state.events;
-  document.querySelector('#state').textContent = `Device screen: ${state.screen} · ${state.paused ? "Sleeping" : "Sniffing"} · Saved XP: ${state.xp}`;
+  document.querySelector('#state').textContent = `Device screen: ${state.screen} · ${state.paused ? "Sleeping" : "Sniffing"} · Demo XP: ${state.preview_xp} · Scents: ${state.discoveries}/19${state.snoozed ? " · Alerts snoozed" : ""}`;
   document.querySelector('#connection').textContent = 'LOCAL SIMULATOR RUNNING';
 }
 function fail(error) {
   document.querySelector('#connection').textContent = 'CONNECTION LOST';
   document.querySelector('#state').textContent = error.message;
+}
+function focusDisplay() {
+  canvas.scrollIntoView({block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
 }
 function request(action) {
   requests = requests.then(async () => {
@@ -47,7 +54,7 @@ function request(action) {
     }) : await fetch('/api/frame');
     await display(response);
     if (action?.action === 'inject') {
-      canvas.scrollIntoView({block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+      focusDisplay();
     }
   }).catch(fail);
   return requests;
@@ -63,13 +70,23 @@ canvas.addEventListener('keydown', event => {
 });
 document.querySelector('#boot').addEventListener('click', () => request({action: 'boot'}));
 for (const button of document.querySelectorAll('[data-action]')) {
-  button.addEventListener('click', () => request({action: button.dataset.action, a: Number(button.dataset.a || 0)}));
+  button.addEventListener('click', () => request({action: button.dataset.action, a: Number(button.dataset.a || 0), b: Number(document.querySelector('#signal-level').value)}));
 }
 document.addEventListener('visibilitychange', () => {active = !document.hidden;});
 async function tick() {
-  if (active) await request();
+  if (active) {
+    if (following && document.querySelector('#repeat-signal').checked && Date.now() - lastSignal >= 1000) {
+      lastSignal = Date.now();
+      await request({action: 'signal', b: Number(document.querySelector('#signal-level').value)});
+    } else await request();
+  }
   setTimeout(tick, 125);
 }
 tick();
 
-document.querySelector('#sample-category').addEventListener('click', () => request({action: 'inject', a: Number(document.querySelector('#scent-category').value)}));
+document.querySelector('#sample-category').addEventListener('click', () => request({action: 'inject', a: Number(document.querySelector('#scent-category').value), b: Number(document.querySelector('#signal-level').value)}));
+
+const signalLevel = document.querySelector('#signal-level');
+signalLevel.addEventListener('input', () => {document.querySelector('#signal-reading').textContent = `-${signalLevel.value} dBm`;});
+document.querySelector('#send-signal').addEventListener('click', () => request({action: 'signal', b: Number(signalLevel.value)}).then(focusDisplay));
+document.querySelector('#repeat-signal').addEventListener('change', event => {if (event.target.checked) focusDisplay();});

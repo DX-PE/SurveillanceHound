@@ -287,6 +287,34 @@ size_t Engine::ingest(const Observation &o, const Settings &settings, std::span<
     }
     return n;
 }
+std::array<uint32_t, 3> Engine::recent_counts(uint64_t now, const Settings &settings) const {
+    std::array<uint32_t, 3> counts{};
+    auto active = [&](const Entry &e) {
+        const auto &d = e.detection;
+        return e.used && d.score >= 20 && now >= d.last_ms && now - d.last_ms <= 90000 &&
+               (settings.enabled_categories & (1U << unsigned(d.category)));
+    };
+    for (size_t i = 0; i < cache_.size(); ++i) {
+        if (!active(cache_[i]))
+            continue;
+        const auto &d = cache_[i].detection;
+        bool already_counted = false;
+        for (size_t j = 0; j < cache_.size(); ++j) {
+            if (i == j || !active(cache_[j]))
+                continue;
+            const auto &other = cache_[j].detection;
+            if (d.address == other.address && d.radio == other.radio &&
+                d.address_type == other.address_type &&
+                (other.score > d.score || (other.score == d.score && j < i))) {
+                already_counted = true;
+                break;
+            }
+        }
+        if (!already_counted)
+            ++counts[d.score >= 80 ? 0 : d.score >= 50 ? 1 : 2];
+    }
+    return counts;
+}
 void Pet::tick(uint64_t now) {
     if (now < decay_ms)
         decay_ms = now;

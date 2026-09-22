@@ -1,0 +1,32 @@
+SPDX-License-Identifier: CC-BY-4.0
+Surveillance Hound / Hosyond ESP32 / 2026-09-22
+USB power; no microSD card; uncontrolled ambient Wi-Fi/BLE.
+Heap values are bytes of byte-addressable internal RAM.
+Stack order: UI / radio / BLE / storage. Values are free stack watermarks in bytes.
+Health snapshots start near 5 s uptime and repeat every 30 s.
+Queue drops are reported; this is not a controlled capture-loss or release-acceptance test.
+Both captures reported the expected missing-card initialization error 0x107.
+Observed identifiers and packet payloads are deliberately omitted.
+
+Memory fix before final four-pixel card-height adjustment
+Application SHA-256: 49bc639f71366299d6690470a979096f3dc5d20430a873bc6ec57642bf94dc1e
+USB capture duration: 300 seconds
+HOUND health: heap=86276 min=79924 largest=77824 stacks=4840/3092/1444/4676 wifi=179 ble=173 drops=141 radio_errors=0 save_errors=0 strong=2 likely=0
+HOUND health: heap=86856 min=79924 largest=77824 stacks=4840/3092/1332/4676 wifi=1311 ble=1624 drops=1294 radio_errors=0 save_errors=0 strong=2 likely=3
+HOUND health: heap=86276 min=79924 largest=77824 stacks=3864/3092/1332/3156 wifi=2387 ble=2692 drops=1950 radio_errors=0 save_errors=0 strong=2 likely=3
+HOUND health: heap=86276 min=79924 largest=77824 stacks=3864/3092/1332/3156 wifi=3656 ble=4131 drops=3192 radio_errors=0 save_errors=0 strong=2 likely=3
+HOUND health: heap=86276 min=79924 largest=77824 stacks=3864/3092/1332/3156 wifi=4836 ble=5431 drops=4239 radio_errors=0 save_errors=0 strong=2 likely=3
+HOUND health: heap=86276 min=79924 largest=77824 stacks=3864/3092/1332/3156 wifi=6183 ble=7011 drops=5685 radio_errors=0 save_errors=0 strong=2 likely=2
+HOUND health: heap=86856 min=79924 largest=77824 stacks=3864/3092/1332/3156 wifi=7331 ble=8411 drops=6814 radio_errors=0 save_errors=0 strong=2 likely=3
+HOUND health: heap=86276 min=79924 largest=77824 stacks=3864/3092/1332/3156 wifi=8384 ble=9902 drops=7958 radio_errors=0 save_errors=0 strong=2 likely=4
+HOUND health: heap=86856 min=79924 largest=77824 stacks=3864/3092/1332/3156 wifi=9587 ble=11226 drops=9021 radio_errors=0 save_errors=0 strong=2 likely=3
+HOUND health: heap=86276 min=79924 largest=77824 stacks=3864/3092/1332/3156 wifi=10831 ble=12659 drops=10250 radio_errors=0 save_errors=0 strong=2 likely=3
+
+Final installed release firmware
+Application SHA-256: f40710edaaa763682922f5de1962f1a1e7801e7eb95619c2adf018e825d7bf31
+USB capture duration: 135 seconds
+HOUND health: heap=86244 min=79896 largest=77824 stacks=4844/3096/1336/4672 wifi=192 ble=173 drops=150 radio_errors=0 save_errors=0 strong=2 likely=1
+HOUND health: heap=86824 min=79896 largest=77824 stacks=4844/3096/1336/4672 wifi=1262 ble=1480 drops=1102 radio_errors=0 save_errors=0 strong=2 likely=2
+HOUND health: heap=86244 min=79896 largest=77824 stacks=3868/3096/1336/3200 wifi=2563 ble=2921 drops=2367 radio_errors=0 save_errors=0 strong=2 likely=3
+HOUND health: heap=86824 min=79896 largest=77824 stacks=3868/3096/1336/3200 wifi=3766 ble=4369 drops=3536 radio_errors=0 save_errors=0 strong=2 likely=3
+HOUND health: heap=86244 min=79896 largest=77824 stacks=3868/3096/1336/3200 wifi=4979 ble=5690 drops=4624 radio_errors=0 save_errors=0 strong=2 likely=4

@@ -33,7 +33,66 @@ std::vector<uint8_t> beacon(const char *ssid = "LAB", bool protected_network = t
     b.insert(b.end(), ssid, ssid + std::strlen(ssid));
     return b;
 }
+void recent_count_tests() {
+    Rule rules[] = {
+        {"test.tag", Category::SAMSUNG_TAG, Kind::Payload, "01", 85, 100, false, "", ""},
+        {"test.apple", Category::AIRTAG, Kind::Payload, "02", 65, 100, false, "", ""},
+        {"test.promotion", Category::AIRTAG, Kind::Payload, "03", 85, 100, false, "", ""},
+        {"test.possible", Category::AIRTAG, Kind::Payload, "04", 30, 100, false, "", ""},
+        {"test.overlap", Category::FLOCK, Kind::Payload, "01", 50, 79, false, "", ""},
+    };
+    Engine engine(rules);
+    Settings s;
+    uint64_t now = 1000;
+    auto sighting = [&](uint8_t id, uint8_t clue, uint8_t type = 0, Radio radio = Radio::Ble) {
+        Observation o{};
+        o.ms = now;
+        o.radio = radio;
+        o.address = {2, 0, 0, 0, 0, id};
+        o.address_type = type;
+        o.manufacturer[0] = o.vendor[0] = clue;
+        o.manufacturer_len = o.vendor_len = 1;
+        std::array<Detection, 4> out{};
+        engine.ingest(o, s, out);
+        now += 1000;
+    };
+    CHECK((engine.recent_counts(now, s) == std::array<uint32_t, 3>{0, 0, 0}));
+    // Two tags and one Apple-family signal stay three through repeated emissions.
+    for (int i = 0; i < 100; ++i) {
+        sighting(1, 1);
+        sighting(2, 1);
+        sighting(3, 2);
+        CHECK((engine.recent_counts(now, s) == std::array<uint32_t, 3>{2, 1, 0}));
+    }
+    s.alert_categories = 0; // Muting does not hide a signal that is still present.
+    s.sound = false;
+    CHECK((engine.recent_counts(now, s) == std::array<uint32_t, 3>{2, 1, 0}));
+    s.enabled_categories &= ~(1U << unsigned(Category::SAMSUNG_TAG));
+    CHECK((engine.recent_counts(now, s) == std::array<uint32_t, 3>{0, 3, 0}));
+    s.enabled_categories = (1U << category_count) - 1U;
+    sighting(3, 3);
+    CHECK((engine.recent_counts(now, s) == std::array<uint32_t, 3>{3, 0, 0}));
+    now += 31000;
+    sighting(3,
+             4); // Latest weaker evidence moves buckets, rather than adding one.
+    CHECK((engine.recent_counts(now, s) == std::array<uint32_t, 3>{2, 0, 1}));
+    sighting(3, 3, 1);
+    sighting(3, 3, 0, Radio::Wifi);
+    CHECK((engine.recent_counts(now, s) == std::array<uint32_t, 3>{4, 0, 1}));
+    CHECK((engine.recent_counts(now - 1000 + 90000, s) == std::array<uint32_t, 3>{1, 0, 0}));
+    CHECK((engine.recent_counts(now + 90000, s) == std::array<uint32_t, 3>{0, 0, 0}));
+    CHECK((engine.recent_counts(0, s) == std::array<uint32_t, 3>{0, 0, 0}));
+    // Capacity is bounded by the existing cache; no heap allocation or total
+    // overflow.
+    for (int i = 0; i < 200; ++i) {
+        sighting(uint8_t(i), 3);
+        now -= 990; // Fit the cache-pressure case inside the recent window.
+    }
+    auto counts = engine.recent_counts(now + 1000, s);
+    CHECK(counts[0] == 128 && counts[1] == 0 && counts[2] == 0);
+}
 int main() {
+    recent_count_tests();
     Observation o{};
     auto b = beacon();
     CHECK(parse_wifi(b, o));

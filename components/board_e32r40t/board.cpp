@@ -90,7 +90,7 @@ bool init() {
     const uint8_t format[] = {0x55};
     command(0x3a, format);
     orientation(false);
-    command(0x21);
+    inversion(false); // Normal polarity is correct for the tested Hosyond panel.
     command(0x29);
     ledc_timer_config_t timer{};
     timer.speed_mode = LEDC_LOW_SPEED_MODE;
@@ -121,6 +121,9 @@ bool init() {
     if (dac_oneshot_new_channel(&d, &dac) == ESP_OK)
         dac_oneshot_output_voltage(dac, 128);
     return true;
+}
+void inversion(bool enabled) {
+    command(enabled ? 0x21 : 0x20);
 }
 void orientation(bool portrait) {
     // ST7796 MADCTL: portrait MX+BGR, landscape MV+BGR.

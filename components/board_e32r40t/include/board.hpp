@@ -19,6 +19,7 @@ struct Calibration {
 };
 bool init();
 void orientation(bool portrait);
+void inversion(bool enabled);
 void blit(int y, int height, std::span<uint16_t> pixels);
 bool touch(Point &raw);
 Point map(Point raw, const Calibration &);

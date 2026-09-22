@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "ui.hpp"
 #include "assets_generated.h"
+#include "scent_guide.hpp"
 #include "signatures_generated.h"
 #include <algorithm>
 #include <cctype>
@@ -51,7 +52,22 @@ class Canvas {
   public:
     int tile, width, height, rows;
     std::span<uint16_t> pixels;
+    uint8_t theme{};
+    uint16_t color(uint16_t value) const {
+        if (!theme)
+            return value;
+        constexpr uint16_t source[] = {bg, panel, ink, muted, mint, amber, pink, grid};
+        constexpr uint16_t palettes[][8] = {
+            {bg, panel, ink, muted, mint, amber, pink, grid},
+            {0x18A4, 0x2907, 0xFF9B, 0xC594, 0xFDCA, 0xFF14, 0xFCB6, 0x51AB},
+            {0xEF7C, 0xFFFF, 0x1926, 0x4ACD, 0x03AD, 0x9B40, 0xA1AA, 0xC638}};
+        for (size_t i = 0; i < std::size(source); ++i)
+            if (source[i] == value)
+                return palettes[std::min<unsigned>(theme, 2)][i];
+        return value;
+    }
     void rect(int x, int y, int w, int h, uint16_t c) {
+        c = color(c);
         int bottom = std::min({y + h, tile + rows, height}), right = std::min(width, x + w);
         for (int yy = std::max(y, tile); yy < bottom; ++yy)
             for (int xx = std::max(0, x); xx < right; ++xx)
@@ -68,8 +84,8 @@ class Canvas {
         }
     }
     void wrap(int x, int y, std::string_view text, int width = 24, uint16_t color = muted,
-              int scale = 2) {
-        while (!text.empty()) {
+              int scale = 2, int max_lines = 1000) {
+        while (!text.empty() && max_lines-- > 0) {
             size_t n = std::min<size_t>(width, text.size());
             if (n < text.size()) {
                 auto space = text.substr(0, n).find_last_of(' ');
@@ -111,15 +127,60 @@ class Canvas {
             }
         }
     }
-    void sprite(int x, int y, int character, int frame, int scale = 2) {
+    void sprite(int x, int y, int character, int frame, int scale = 2, int outfit = 0) {
         const auto &f = assets::frames[std::clamp(character, 0, 5)][frame % assets::frame_count];
         size_t at = 0;
         for (size_t i = f.offset; i < f.offset + f.length; i += 2) {
             uint8_t run = assets::pixels[i], index = assets::pixels[i + 1];
             for (unsigned j = 0; j < run; ++j, ++at)
-                if (index)
-                    rect(x + int(at % 64) * scale, y + int(at / 64) * scale, scale, scale,
-                         assets::palettes[std::clamp(character, 0, 5)][index]);
+                if (index) {
+                    auto color = assets::palettes[std::clamp(character, 0, 5)][index];
+                    int px = at % 64, py = at / 64;
+                    bool side = frame >= assets::side_walk;
+                    if (index == 6 && outfit)
+                        color = outfit == 1   ? ((px / 2 + py / 2) % 2 ? pink : mint)
+                                : outfit == 2 ? amber
+                                              : pink;
+                    if (outfit == 2 && index == 6 && py >= (side ? 43 : 45))
+                        color = assets::palettes[std::clamp(character, 0, 5)][side ? 1 : 2];
+                    if (outfit == 3 && (index == 1 || index == 2) &&
+                        (side ? px >= 9 && px <= 37 && py >= 34 && py <= 44
+                              : px >= 17 && px <= 46 && py >= 43 && py <= 51))
+                        color = amber;
+                    rect(x + px * scale, y + py * scale, scale, scale, color);
+                }
+        }
+    }
+    void dog(int x, int y, int character, int frame, int outfit, int scale = 2) {
+        sprite(x, y, character, frame, scale, outfit);
+        const bool side = frame >= assets::side_walk;
+        int bob = (frame < 17 || frame >= 22) && frame % 2 ? 1 : 0;
+        int face = side ? (frame >= assets::side_eat ? 31 : 28 - (frame - assets::side_walk) % 2)
+                        : 27 - bob + (frame >= 8 && frame <= 10 ? 3 : 0);
+        auto part = [&](int dx, int dy, int w, int h, uint16_t color) {
+            rect(x + dx * scale, y + dy * scale, w * scale, h * scale, color);
+        };
+        if (outfit == 2) {
+            part(side ? 37 : 21, side ? 40 - bob : 42 - bob, side ? 8 : 23, 3, amber);
+            part(side ? 40 : 30, side ? 43 - bob : 45 - bob, 5, 5, amber);
+            part(side ? 41 : 31, side ? 44 - bob : 46 - bob, 2, 2, bg);
+        } else if (outfit == 4) {
+            int hx = side ? 32 : 17, hy = face - 18;
+            part(hx + 3, hy - 3, 24, 7, 0xAB44);
+            part(hx, hy + 4, 31, 3, amber);
+            part(hx + 12, hy - 2, 2, 6, bg);
+        } else if (outfit == 5) {
+            if (side) {
+                part(43, face - 6, 11, 8, bg);
+                part(45, face - 5, 7, 2, mint);
+                part(37, face - 5, 7, 2, bg);
+            } else {
+                part(15, face - 5, 13, 9, bg);
+                part(34, face - 5, 13, 9, bg);
+                part(28, face - 3, 6, 2, bg);
+                part(17, face - 4, 8, 2, mint);
+                part(36, face - 4, 8, 2, mint);
+            }
         }
     }
     void food(int x, int y, Category category, int bites = 0) {
@@ -270,6 +331,14 @@ struct Layout {
     bool portrait;
     int w, h;
     explicit Layout(bool p) : portrait(p), w(display::width(p)), h(display::height(p)) {}
+    Rect book(int i) const {
+        int cols = portrait ? 2 : 3, cw = (w - 24) / cols;
+        return {12 + (i % cols) * cw, (portrait ? 78 : 68) + (i / cols) * (portrait ? 100 : 80),
+                cw - 6, portrait ? 94 : 74};
+    }
+    Rect quiet() const {
+        return portrait ? Rect{180, 362, 118, 28} : Rect{312, 186, 146, 30};
+    }
     Rect sniff() const {
         return portrait ? Rect{16, 398, 288, 32} : Rect{306, 226, 162, 30};
     }
@@ -303,16 +372,58 @@ struct Layout {
 void button(Canvas &c, Rect r, std::string_view label, bool active = false) {
     c.button(r.x, r.y, r.w, label, active, r.h);
 }
-const char *titles[] = {"HELLO, HOUND",    "CALIBRATE TOUCH",  "PICK YOUR PARTNER",
-                        "NAME YOUR HOUND", "YOUR PRIVACY",     "SURVEILLANCE HOUND",
-                        "FIELD NOTES",     "DETECTORS",        "SETTINGS",
-                        "DIAGNOSTICS",     "EVIDENCE DETAILS", "RESEARCH LOGGING",
-                        "RESET PROGRESS",  "ALERT TYPES",      "SET UTC TIME",
-                        "BATTERY SETUP",   "CLEAR LOGS",       "SELF TEST"};
+const char *titles[] = {
+    "HELLO, HOUND",   "CALIBRATE TOUCH",    "PICK YOUR PARTNER", "NAME YOUR HOUND",
+    "YOUR PRIVACY",   "SURVEILLANCE HOUND", "FIELD NOTES",       "DETECTORS",
+    "SETTINGS",       "DIAGNOSTICS",        "EVIDENCE DETAILS",  "RESEARCH LOGGING",
+    "RESET PROGRESS", "ALERT TYPES",        "SET UTC TIME",      "BATTERY SETUP",
+    "CLEAR LOGS",     "SELF TEST",          "SCENT BOOK",        "SCENT CARD",
+    "WARDROBE",       "QUIET ALERTS",       "IGNORED SCENTS",    "FOLLOW SCENT",
+    "ATMOSPHERE",     "DISPLAY OPTIONS"};
 } // namespace
+uint64_t View::identity(const Detection &d) const {
+    if (std::none_of(identity_key.begin(), identity_key.end(), [](auto b) { return b != 0; }))
+        return 0;
+    return meal_hash(identity_key, d);
+}
+bool View::alert_allowed(const Detection &d) const {
+    const auto &c = d.demo ? preview_companion : companion;
+    return !paused && should_alert(settings, d) &&
+           now >= (d.demo ? preview_snooze_until : snooze_until) && !c.is_ignored(identity(d));
+}
+void View::open_actions(const Detection &d) {
+    action_detection = d; // Freeze the target even if another event arrives.
+    alert_until = 0;
+    notice[0] = 0;
+    screen = Screen::AlertActions;
+}
+void View::reset_progress() {
+    auto &c = collection();
+    c.scents = {};
+    c.equipped = 0;
+    c.unlocked = 1;
+    if (demo)
+        preview_xp = 0;
+    else
+        pet = Pet{};
+    known_level = pet.level();
+    unlock_until = level_until = 0;
+}
 void View::event(const Detection &d) {
-    if (paused)
+    if (paused || size_t(d.category) >= category_count || d.score > 100)
         return;
+    auto &book = d.demo ? preview_companion : companion;
+    bool first = !book.scents[size_t(d.category)].observations;
+    book.observe(d);
+    if (d.demo && d.meal)
+        preview_xp = std::min<uint64_t>(UINT32_MAX, uint64_t(preview_xp) + 25);
+    auto unlocked = book.unlock(d.demo ? preview_xp : pet.xp);
+    if (unlocked) {
+        unlocked_outfit = std::countr_zero(unsigned(unlocked));
+        unlock_until = now + 12000;
+    }
+    if (!d.demo && (first || unlocked))
+        requests |= Save;
     if (!d.demo && pet.level() > known_level)
         level_until = now + 11000;
     known_level = pet.level();
@@ -320,9 +431,7 @@ void View::event(const Detection &d) {
         recent[i] = recent[i - 1];
     recent[0] = d;
     recent_count = std::min(recent_count + 1, recent.size());
-    if (!d.demo)
-        ++counts[d.score >= 80 ? 0 : d.score >= 50 ? 1 : 2];
-    if (should_alert(settings, d)) {
+    if (alert_allowed(d)) {
         alert_detection = d;
         alert_until = now + 5000;
     }
@@ -358,6 +467,8 @@ void View::next() {
              : screen == Screen::Log       ? Screen::Detectors
              : screen == Screen::Detectors ? Screen::Settings
                                            : Screen::Home;
+    if (screen == Screen::Settings)
+        settings_page = 0;
 }
 void View::tap(int x, int y) {
     const Layout l(settings.portrait);
@@ -367,12 +478,155 @@ void View::tap(int x, int y) {
         rotate();
         return;
     }
+    if (screen == Screen::Home && Rect{l.w - 90, 32, 78, 25}.has(x, y)) {
+        screen = Screen::ScentBook;
+        return;
+    }
+    if (screen == Screen::Home && Rect{20, 72, l.portrait ? 280 : 264, 21}.has(x, y) &&
+        alert_until <= now) {
+        collection().unlock(demo ? preview_xp : pet.xp);
+        wardrobe_index = collection().equipped;
+        screen = Screen::Wardrobe;
+        return;
+    }
     if (screen == Screen::Home && l.sniff().has(x, y)) {
         paused = !paused;
+        follow.restart(now);
         requests |= Pause;
         alert_until = meal_until = happy_until = 0;
         scanning = !paused;
         notice[0] = 0;
+        return;
+    }
+    if (screen == Screen::Home && alert_until > now && l.quiet().has(x, y)) {
+        open_actions(alert_detection);
+        return;
+    }
+    if (screen == Screen::Home && follow.active &&
+        (l.portrait ? Rect{180, 264, 116, 22} : Rect{302, 32, 82, 25}).has(x, y)) {
+        screen = Screen::Follow;
+        return;
+    }
+    if (screen == Screen::Follow) {
+        if (l.confirm(false).has(x, y))
+            screen = Screen::Home;
+        if (l.confirm(true).has(x, y)) {
+            follow = {};
+            screen = Screen::Home;
+        }
+        return;
+    }
+    if (screen == Screen::Display) {
+        if (l.row(0).has(x, y)) {
+            settings.brightness = settings.brightness >= 100 ? 20 : settings.brightness + 20;
+            requests |= Save;
+        }
+        if (l.row(1).has(x, y)) {
+            look().inverted ^= 1;
+            requests |= Save | Invert;
+        }
+        if (l.row(2).has(x, y)) {
+            settings.reduced_animation = !settings.reduced_animation;
+            requests |= Save;
+        }
+        if (l.row(3).has(x, y))
+            screen = Screen::SelfTest;
+        if (l.row(4).has(x, y))
+            screen = Screen::Settings;
+        if (l.more().has(x, y))
+            screen = Screen::Home;
+        return;
+    }
+    if (screen == Screen::Appearance) {
+        if (l.row(0).has(x, y))
+            look().theme = (look().theme + 1) % 3;
+        if (l.row(1).has(x, y))
+            look().scene = (look().scene + 1) % 3;
+        if (l.row(2).has(x, y))
+            look().speech = (look().speech + 1) % 3;
+        if (l.row(3).has(x, y))
+            look().compact ^= 1;
+        if (l.row(4).has(x, y))
+            screen = Screen::Settings;
+        if (l.more().has(x, y))
+            screen = Screen::Home;
+        requests |= Save;
+        return;
+    }
+    if (screen == Screen::ScentBook) {
+        if (l.confirm(false).has(x, y))
+            screen = Screen::Settings;
+        else if (l.confirm(true).has(x, y))
+            book_page = (book_page + 1) % 4;
+        else
+            for (int i = 0; i < 6; ++i)
+                if (l.book(i).has(x, y) && book_page * 6 + i < int(category_count)) {
+                    scent_index = book_page * 6 + i;
+                    scent_page = 0;
+                    screen = Screen::ScentCard;
+                }
+        return;
+    }
+    if (screen == Screen::ScentCard) {
+        if (l.confirm(false).has(x, y))
+            screen = Screen::ScentBook;
+        if (l.confirm(true).has(x, y))
+            scent_page = (scent_page + 1) % 3;
+        return;
+    }
+    if (screen == Screen::Wardrobe) {
+        if (Rect{12, 68, 44, 120}.has(x, y))
+            wardrobe_index = (wardrobe_index + int(outfit_count) - 1) % outfit_count;
+        if (Rect{l.w - 56, 68, 44, 120}.has(x, y))
+            wardrobe_index = (wardrobe_index + 1) % outfit_count;
+        if (l.confirm(false).has(x, y))
+            screen = Screen::Settings;
+        if (l.confirm(true).has(x, y) && (collection().unlocked & (1U << wardrobe_index))) {
+            collection().equipped = wardrobe_index;
+            requests |= Save;
+        }
+        return;
+    }
+    if (screen == Screen::AlertActions) {
+        for (int i = 0; i < 3; ++i)
+            if (l.row(i).has(x, y)) {
+                constexpr uint64_t minutes[] = {5, 15, 60};
+                (demo ? preview_snooze_until : snooze_until) = now + minutes[i] * 60000;
+                alert_until = 0;
+                screen = Screen::Home;
+                return;
+            }
+        if (l.row(3).has(x, y)) {
+            auto &c = action_detection.demo ? preview_companion : companion;
+            if (c.ignore(identity(action_detection), action_detection.category)) {
+                requests |= Save;
+                screen = Screen::Home;
+                std::snprintf(notice.data(), notice.size(), "IGNORED / LOGS AND MEALS KEPT");
+            } else
+                std::snprintf(notice.data(), notice.size(),
+                              "IGNORE UNAVAILABLE OR FULL / REMOVE AN ENTRY");
+        }
+        if (l.row(4).has(x, y)) {
+            (demo ? preview_snooze_until : snooze_until) = 0;
+            screen = Screen::Home;
+        }
+        if (l.more().has(x, y))
+            screen = Screen::Home;
+        return;
+    }
+    if (screen == Screen::Ignored) {
+        if (l.confirm(false).has(x, y))
+            screen = Screen::Settings;
+        if (l.confirm(true).has(x, y))
+            ignored_page = (ignored_page + 1) % 4;
+        for (int i = 0; i < 4; ++i)
+            if (l.detector(i).has(x, y)) {
+                auto &entry = collection().ignored[ignored_page * 4 + i];
+                if (entry.hash) {
+                    entry = {};
+                    requests |= Save;
+                }
+            }
         return;
     }
     if (screen == Screen::Clock) {
@@ -508,15 +762,24 @@ void View::tap(int x, int y) {
         return;
     }
     if (screen == Screen::Details) {
+        if (Rect{12, l.h - 40, l.w - 24, 32}.has(x, y) &&
+            (detail_valid || selected < recent_count)) {
+            follow_scent(detail_valid ? detail_detection : recent[selected]);
+            return;
+        }
         if (Rect{l.w - 108, 32, 96, 30}.has(x, y))
             detail_page = 1 - detail_page;
-        if (l.more().has(x, y))
+        if (l.confirm(false).has(x, y))
             screen = Screen::Log;
+        if (l.confirm(true).has(x, y) && (detail_valid || selected < recent_count))
+            open_actions(detail_valid ? detail_detection : recent[selected]);
         return;
     }
     if (settings.onboarded && y >= l.h - 44) {
         constexpr Screen nav[] = {Screen::Home, Screen::Log, Screen::Detectors, Screen::Settings};
         screen = nav[x / (l.w / 4)];
+        if (screen == Screen::Settings)
+            settings_page = 0;
         return;
     }
     if (screen == Screen::Home) {
@@ -525,6 +788,8 @@ void View::tap(int x, int y) {
             return;
         }
         if (y >= 64 && y < (l.portrait ? 308 : 254) && (l.portrait || x < 300)) {
+            if (pets != UINT32_MAX)
+                ++pets;
             pet.stroke();
             happy_until = now + 2500;
         }
@@ -581,7 +846,7 @@ void View::tap(int x, int y) {
             requests |= DiagnosticCopy;
     } else if (screen == Screen::Settings) {
         if (l.more().has(x, y)) {
-            settings_page = (settings_page + 1) % 5;
+            settings_page = (settings_page + 1) % 6;
             return;
         }
         int row = -1;
@@ -593,6 +858,28 @@ void View::tap(int x, int y) {
         if (settings_page == 0) {
             switch (row) {
             case 0:
+                collection().unlock(demo ? preview_xp : pet.xp);
+                wardrobe_index = collection().equipped;
+                screen = Screen::Wardrobe;
+                break;
+            case 1:
+                screen = Screen::Appearance;
+                break;
+            case 2:
+                screen = Screen::ScentBook;
+                break;
+            case 3:
+                screen = Screen::Ignored;
+                break;
+            case 4:
+                (demo ? preview_snooze_until : snooze_until) =
+                    snoozed_until() > now ? 0 : now + 900000;
+                alert_until = 0;
+                break;
+            }
+        } else if (settings_page == 1) {
+            switch (row) {
+            case 0:
                 settings.rotation_locked = !settings.rotation_locked;
                 requests |= Save;
                 break;
@@ -600,8 +887,7 @@ void View::tap(int x, int y) {
                 rotate();
                 break;
             case 2:
-                settings.brightness = settings.brightness >= 100 ? 20 : settings.brightness + 20;
-                requests |= Save;
+                screen = Screen::Display;
                 break;
             case 3:
                 settings.reduced_animation = !settings.reduced_animation;
@@ -611,7 +897,7 @@ void View::tap(int x, int y) {
                 screen = Screen::Alerts;
                 break;
             }
-        } else if (settings_page == 1) {
+        } else if (settings_page == 2) {
             switch (row) {
             case 0:
                 settings.sound = !settings.sound;
@@ -633,7 +919,7 @@ void View::tap(int x, int y) {
                 break;
             }
             requests |= Save;
-        } else if (settings_page == 2) {
+        } else if (settings_page == 3) {
             switch (row) {
             case 0:
                 if (settings.research) {
@@ -650,6 +936,9 @@ void View::tap(int x, int y) {
                 break;
             case 3:
                 demo = !demo;
+                if (demo)
+                    preview_appearance = appearance;
+                follow = {};
                 requests |= Demo;
                 screen = Screen::Home;
                 break;
@@ -657,7 +946,7 @@ void View::tap(int x, int y) {
                 screen = Screen::Diagnostics;
                 break;
             }
-        } else if (settings_page == 4) {
+        } else if (settings_page == 5) {
             switch (row) {
             case 0:
                 screen = Screen::Clock;
@@ -688,7 +977,7 @@ void View::tap(int x, int y) {
                 screen = Screen::Choose;
                 break;
             case 3:
-                settings_page = 0;
+                settings_page = 1;
                 break;
             case 4:
                 screen = Screen::Home;
@@ -701,8 +990,8 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
     const Layout l(settings.portrait);
     if (tile_y < 0 || tile_y >= l.h || pixels.size() != size_t(l.w * tile_rows()))
         return;
-    std::fill(pixels.begin(), pixels.end(), bg);
-    Canvas c{tile_y, l.w, l.h, tile_rows(), pixels};
+    Canvas c{tile_y, l.w, l.h, tile_rows(), pixels, look().theme};
+    std::fill(pixels.begin(), pixels.end(), c.color(bg));
     char text[100];
     c.rect(0, 0, l.w, 26, panel);
     c.text(12, 9, demo ? "DEMO / NO SAVES" : settings.research ? "RAW LOG" : "PRIVATE", mint, 1);
@@ -765,34 +1054,109 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
         button(c, l.confirm(true), "ENABLE");
         break;
     case Screen::ResetWarning:
-        c.wrap(16, 94, "Reset this hound's XP and meals? Your observation logs remain on the card.",
-               l.portrait ? 24 : 37);
+        c.wrap(
+            16, 94,
+            "Reset XP, meals, Scent Book and outfits? Observation logs and ignored devices remain.",
+            l.portrait ? 24 : 37);
         button(c, l.confirm(false), "CANCEL");
         button(c, l.confirm(true), "RESET");
         break;
     case Screen::Home: {
+        button(c, {l.w - 90, 32, 78, 25}, "BOOK");
+        if (follow.active && !l.portrait)
+            button(c, {302, 32, 82, 25}, "FOLLOW", true);
         int stage_w = l.portrait ? 296 : 280, stage_h = l.portrait ? 226 : 192;
         c.box(12, 64, stage_w, stage_h, grid);
-        // A low-cost original night-patrol scene: falling signal marks and a perspective grid.
-        for (int col = 0; col < 12; ++col) {
-            int x = 22 + col * (stage_w - 20) / 12;
-            int y = 72 + (col * 19 + (settings.reduced_animation ? 0 : int(now / 160))) % 80;
-            for (int k = 0; k < 3; ++k)
-                c.rect(x, y + k * 7, 2, 3, k == 0 ? mint : grid);
-        }
         int horizon = 64 + stage_h - 49;
-        for (int i = -4; i <= 4; ++i)
-            c.line(12 + stage_w / 2, horizon,
-                   std::clamp(12 + stage_w / 2 + i * stage_w / 4, 13, stage_w + 10),
-                   64 + stage_h - 2, grid);
-        for (int y = 0; y < 5; ++y)
-            c.rect(13, horizon + y * y * 3, stage_w - 2, 1, grid);
+        if (look().scene == 0) {
+            for (int col = 0; col < 12; ++col) {
+                int x = 22 + col * (stage_w - 20) / 12;
+                int y = 72 + (col * 19 + (settings.reduced_animation ? 0 : int(now / 160))) % 80;
+                for (int k = 0; k < 3; ++k)
+                    c.rect(x, y + k * 7, 2, 3, k == 0 ? mint : grid);
+            }
+            for (int i = -4; i <= 4; ++i)
+                c.line(12 + stage_w / 2, horizon,
+                       std::clamp(12 + stage_w / 2 + i * stage_w / 4, 13, stage_w + 10),
+                       64 + stage_h - 2, grid);
+            for (int y = 0; y < 5; ++y)
+                c.rect(13, horizon + y * y * 3, stage_w - 2, 1, grid);
+        } else if (look().scene == 1) {
+            // Original dog park: shaded grass, picket fence, agility hoop and toys.
+            constexpr uint16_t lawns[] = {0x1945, 0x3146, 0xC6D1};
+            constexpr uint16_t leaves[] = {0x32E9, 0x642A, 0x53A8};
+            constexpr uint16_t tips[] = {0x4C0D, 0x958C, 0x85AC};
+            const auto theme = look().theme;
+            c.rect(13, horizon - 9, stage_w - 2, 64 + stage_h - horizon + 8, lawns[theme]);
+            c.rect(stage_w - 55, 103, 16, 16, amber);
+            // Canopies frame the dog, leaving its face and name unobstructed.
+            for (int tx : {38, stage_w - 28}) {
+                c.rect(tx - 3, 125, 7, horizon - 130, grid);
+                c.rect(tx - 18, 114, 37, 21, leaves[theme]);
+                c.rect(tx - 12, 103, 25, 12, leaves[theme]);
+                c.rect(tx - 23, 121, 47, 9, leaves[theme]);
+                c.rect(tx - 10, 107, 17, 6, tips[theme]);
+            }
+            for (int fy : {horizon - 41, horizon - 23})
+                c.rect(14, fy, stage_w - 4, 3, muted);
+            for (int fx = 20; fx < stage_w; fx += 19) {
+                c.rect(fx + 1, horizon - 49, 3, 3, muted);
+                c.rect(fx, horizon - 46, 5, 35, muted);
+            }
+            c.box(59, horizon - 61, 70, 19, amber);
+            c.text(67, horizon - 55, "DOG PARK", ink, 1);
+            // Stepped pixel hoop and supports, to the right of the hound.
+            int hx = stage_w - 44, hy = horizon - 24;
+            c.rect(hx - 18, hy, 3, 27, grid);
+            c.rect(hx + 16, hy, 3, 27, grid);
+            for (int side : {-1, 1}) {
+                c.rect(hx - 10, hy + side * 18, 23, 4, amber);
+                c.rect(hx - 17, hy + (side < 0 ? -14 : 12), 7, 6, amber);
+                c.rect(hx + 13, hy + (side < 0 ? -14 : 12), 7, 6, amber);
+            }
+            c.rect(hx - 21, hy - 8, 4, 20, amber);
+            c.rect(hx + 20, hy - 8, 4, 20, amber);
+            // A hydrant, tennis ball, frisbee and little tufts of grass.
+            c.rect(38, horizon - 15, 10, 24, pink);
+            c.rect(36, horizon - 18, 14, 5, pink);
+            c.rect(33, horizon - 8, 20, 6, pink);
+            c.rect(35, horizon + 8, 17, 4, pink);
+            c.rect(40, horizon - 11, 3, 12, ink);
+            c.rect(66, horizon + 8, 8, 10, 0xCFA6);
+            c.rect(64, horizon + 10, 12, 6, 0xCFA6);
+            c.line(68, horizon + 9, 72, horizon + 16, ink);
+            c.rect(stage_w - 51, horizon + 17, 23, 4, mint);
+            c.rect(stage_w - 47, horizon + 15, 15, 2, ink);
+            for (int gx : {25, 86, stage_w - 14}) {
+                c.rect(gx, horizon + 17, 2, 5, leaves[theme]);
+                c.rect(gx + 3, horizon + 14, 2, 7, leaves[theme]);
+            }
+        } else {
+            c.rect(stage_w - 42, 104, 18, 18, amber);
+            for (int i = 0; i < 8; ++i) {
+                int bx = 16 + i * (stage_w - 8) / 8, bh = 37 + (i * 17) % 43;
+                c.rect(bx, horizon - bh, 29, bh, grid);
+                for (int wy = horizon - bh + 8; wy < horizon - 5; wy += 13)
+                    for (int wx = 0; wx < 2; ++wx)
+                        c.rect(bx + 6 + wx * 12, wy, 4, 5, i % 3 == 0 ? amber : muted);
+            }
+            c.rect(13, horizon, stage_w - 2, 3, muted);
+            for (int x = 20; x < stage_w; x += 22)
+                c.rect(x, horizon + 18, 12, 2, grid);
+        }
         c.rect(20, 72, stage_w - 16, 21, panel);
-        std::snprintf(text, sizeof(text), "%s / LV %u", settings.name.data(), pet.level());
+        std::snprintf(text, sizeof(text), "%s / LV %u / OUTFIT", settings.name.data(), pet.level());
         c.text(24, 78, text, mint, 1);
         const auto snack = snack_pose();
         int frame = settings.reduced_animation ? 0 : int(now / 250) % 4;
         const char *state = "ON PATROL", *line = "ALL QUIET. GOOD COMPANY.";
+        if (look().scene == 1)
+            line =
+                (now / 24000) % 2 ? "WHO BROUGHT THE TENNIS BALL?" : "GOOD NOSES. GREAT ZOOMIES.";
+        else if (look().scene == 2)
+            line = (now / 24000) % 2 ? "CITY LIGHTS. SHARP EARS." : "ROOFTOP WATCH, TAIL READY.";
+        else if ((now / 24000) % 2)
+            line = "I HEARD THAT. PROBABLY.";
         if (paused) {
             frame = 17 + (settings.reduced_animation ? 0 : int(now / 900) % 3);
             state = "SLEEPING";
@@ -807,18 +1171,28 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
                    : meal_category == Category::FLIPPER   ? "DOLPHIN SNACK!"
                    : meal_category == Category::PINEAPPLE ? "PINEAPPLE SNACK!"
                                                           : "A CLUE AND A CHEW.";
+        } else if (unlock_until > now) {
+            frame = 22 + (settings.reduced_animation ? 0 : int(now / 166) % 3);
+            state = "NEW OUTFIT!";
+            line = "YOUR WARDROBE IS GROWING.";
         } else if (level_until > now) {
             frame = 22 + (settings.reduced_animation ? 0 : int(now / 166) % 3);
             state = "LEVEL UP!";
             line = "A LITTLE OLDER. STILL A PUP.";
         } else if (happy_until > now) {
-            frame = 22 + int(now / 166) % 3;
+            frame = (pets % 3 == 0 ? 11 : 22) + int(now / 166) % (pets % 3 == 0 ? 2 : 3);
+            const char *reactions[] = {"EAR SCRITCHES!", "THAT IS THE SPOT.", "ONE MORE, PLEASE.",
+                                       "TAIL WAGS FOR YOU."};
             state = "GOOD HOUND";
-            line = "THAT IS THE SPOT.";
+            line = reactions[pets % 4];
         } else if (pet.fullness < 25) {
             frame = 20 + int(now / 500) % 2;
             state = "PECKISH";
             line = "NO RUSH. LET'S WANDER.";
+        } else if ((now / 15000) % 4 == 0 && (now / 4000) % 3 == 2) {
+            frame = 11 + int(now / 450) % 2;
+            state = "ALL EARS";
+            line = "DID SOMEONE SAY WALK?";
         } else if ((now / 15000) % 4 == 1) {
             frame = 4 + int(now / 125) % 4;
             state = "PATROLLING";
@@ -832,17 +1206,17 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
             line = "EVEN HOUNDS TAKE BREAKS.";
         }
         if (settings.reduced_animation && snack.phase == SnackPhase::None)
-            frame = paused                                     ? 17
-                    : (happy_until > now || level_until > now) ? 22
-                    : pet.fullness < 25                        ? 20
-                                                               : 0;
+            frame = paused                                                           ? 17
+                    : (happy_until > now || level_until > now || unlock_until > now) ? 22
+                    : pet.fullness < 25                                              ? 20
+                                                                                     : 0;
         int dog_x = 12 + (stage_w - 128) / 2, dog_y = 95 + (l.portrait ? 22 : 0);
         int food_x = stage_w - 30, food_y = dog_y + 68;
         if (snack.phase == SnackPhase::Approach || snack.phase == SnackPhase::Chew)
             dog_x += (food_x - 124 - dog_x) * snack.approach / 100;
         if (snack.phase != SnackPhase::None && snack.phase != SnackPhase::Happy)
             c.food(food_x, food_y, meal_category, snack.bites);
-        c.sprite(dog_x, dog_y, settings.character, frame);
+        c.dog(dog_x, dog_y, settings.character, frame, collection().equipped);
         if (paused)
             for (int i = 0; i < 3; ++i) {
                 int drift = settings.reduced_animation ? 0 : int(now / 250) % 12;
@@ -854,66 +1228,346 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
             c.rect(food_x + 3, food_y + 26 + bounce * 3, 3, 3, crumbs);
             c.rect(food_x + 12, food_y + 29 + bounce * 2, 2, 2, crumbs);
         }
-        c.rect(20, 64 + stage_h - 23, stage_w - 16, 16, panel);
-        c.text(25, 64 + stage_h - 19, line, mint, 1);
+        if (speaking() && !(l.portrait && follow.active)) {
+            int by = 64 + stage_h - 23;
+            c.box(20, by, stage_w - 16, 17, mint);
+            c.rect(49, by - 4, 6, 5, mint);
+            c.text(25, by + 5, line, mint, 1);
+        }
         int sx = l.portrait ? 16 : 306, sy = l.portrait ? 304 : 72;
         c.text(sx, sy, state, mint, 2);
-        c.text(sx, sy + 27, "FULLNESS", muted, 1);
-        c.rect(sx + 60, sy + 25, 92, 9, panel);
-        c.rect(sx + 60, sy + 25, pet.fullness * 92 / 100, 9, mint);
-        c.text(sx, sy + 45, "MOOD", muted, 1);
-        c.rect(sx + 60, sy + 43, 92, 9, panel);
-        c.rect(sx + 60, sy + 43, pet.mood * 92 / 100, 9, pink);
-        std::snprintf(text, sizeof(text), "%lu STRONG", static_cast<unsigned long>(counts[0]));
-        c.text(sx, sy + 72, text, ink, l.portrait ? 1 : 2);
-        std::snprintf(text, sizeof(text), "%lu LIKELY", static_cast<unsigned long>(counts[1]));
-        c.text(l.portrait ? sx + 148 : sx, sy + (l.portrait ? 72 : 94), text, ink,
-               l.portrait ? 1 : 2);
-        if (!l.portrait)
-            c.text(sx, sy + 122,
-                   demo       ? "SYNTHETIC SIGHTINGS"
-                   : paused   ? "SNIFFING STOPPED"
+        if (look().compact) {
+            std::snprintf(text, sizeof(text), "FULL %u / MOOD %u", pet.fullness, pet.mood);
+            c.text(sx, sy + 29, text, muted, 1);
+            std::snprintf(text, sizeof(text), "STRONG %lu / LIKELY %lu",
+                          static_cast<unsigned long>(counts[0]),
+                          static_cast<unsigned long>(counts[1]));
+            c.text(sx, sy + 42, demo ? "DEMO / COUNTS EXCLUDED" : "RECENT SIGNALS / 90S", muted, 1);
+            c.text(sx, sy + 55, text, ink, 1);
+            c.text(sx, sy + 70,
+                   paused     ? "SNIFFING STOPPED"
+                   : demo     ? "SYNTHETIC SIGHTINGS"
                    : scanning ? "LISTENING ONLY"
                               : "RADIO PAUSED",
-                   muted, 1);
-        if (!l.portrait) {
-            if (battery_level >= 0) {
-                std::snprintf(text, sizeof(text), "BAT %d%% / %d MV", battery_level,
-                              battery_millivolts);
-                c.text(sx, sy + 143, text, mint, 1);
-            } else
-                c.text(sx, sy + 143,
-                       paused ? "RADIOS STOPPED"
-                       : ble  ? "BLE WINDOW"
-                              : "WI-FI WINDOW",
-                       mint, 1);
+                   mint, 1);
+            if (!l.portrait) {
+                c.text(sx, sy + 102, "LATEST SCENT", muted, 1);
+                c.text(sx, sy + 117,
+                       recent_count ? categories[size_t(recent[0].category)] : "NONE YET", ink, 1);
+                c.text(sx, sy + 143, "TAP LOG FOR EVIDENCE", muted, 1);
+            }
+        } else {
+            c.text(sx, sy + 27, "FULLNESS", muted, 1);
+            c.rect(sx + 60, sy + 25, 92, 9, panel);
+            c.rect(sx + 60, sy + 25, pet.fullness * 92 / 100, 9, mint);
+            c.text(sx, sy + 45, "MOOD", muted, 1);
+            c.rect(sx + 60, sy + 43, 92, 9, panel);
+            c.rect(sx + 60, sy + 43, pet.mood * 92 / 100, 9, pink);
+            std::snprintf(text, sizeof(text), "%lu STRONG", static_cast<unsigned long>(counts[0]));
+            c.text(sx, sy + 72, text, ink, l.portrait ? 1 : 2);
+            std::snprintf(text, sizeof(text), "%lu LIKELY", static_cast<unsigned long>(counts[1]));
+            c.text(l.portrait ? sx + 148 : sx, sy + (l.portrait ? 72 : 94), text, ink,
+                   l.portrait ? 1 : 2);
+            if (l.portrait)
+                c.text(sx, sy + 59, demo ? "DEMO / COUNTS EXCLUDED" : "RECENT SIGNALS / 90S", muted,
+                       1);
+            if (!l.portrait)
+                c.text(sx, sy + 122,
+                       demo       ? "SYNTHETIC SIGHTINGS"
+                       : paused   ? "SNIFFING STOPPED"
+                       : scanning ? "RECENT SIGNALS / 90S"
+                                  : "RADIO PAUSED",
+                       muted, 1);
+            if (!l.portrait) {
+                if (battery_level >= 0) {
+                    std::snprintf(text, sizeof(text), "BAT %d%% / %d MV", battery_level,
+                                  battery_millivolts);
+                    c.text(sx, sy + 143, text, mint, 1);
+                } else
+                    c.text(sx, sy + 143,
+                           paused ? "RADIOS STOPPED"
+                           : ble  ? "BLE WINDOW"
+                                  : "WI-FI WINDOW",
+                           mint, 1);
+            }
         }
-        if (notice[0])
-            c.text(12, l.h - 58, notice.data(), amber, 1);
+        if (unlock_until > now) {
+            c.rect(20, 64 + stage_h - 23, stage_w - 16, 16, panel);
+            std::snprintf(text, sizeof(text), "UNLOCKED: %s", outfit_names[unlocked_outfit]);
+            c.text(25, 64 + stage_h - 19, text, amber, 1);
+        }
+        if (home_notice()[0])
+            c.text(12, l.h - 58, home_notice(), amber, 1);
+        else if (snoozed_until() > now) {
+            std::snprintf(text, sizeof(text), "ALERTS SNOOZED / %llu MIN LEFT",
+                          static_cast<unsigned long long>((snoozed_until() - now + 59999) / 60000));
+            c.text(12, l.h - 58, text, amber, 1);
+        }
+        if (follow.active && l.portrait)
+            button(c, {180, 264, 116, 22}, "FOLLOW", true);
         button(c, l.sniff(), paused ? "START SNIFFING" : "STOP SNIFFING", paused);
         if (alert_until > now) {
             const auto &d = alert_detection;
-            bool compact = snack.phase != SnackPhase::None;
-            int x = compact ? (l.portrait ? 12 : 302) : (l.portrait ? 12 : 40);
-            int y = compact ? (l.portrait ? 302 : 66) : (l.portrait ? 108 : 78);
-            int w = compact ? (l.portrait ? 296 : 166) : (l.portrait ? 296 : 400);
-            int h = compact ? (l.portrait ? 90 : 154) : (l.portrait ? 250 : 178);
+            // Every home alert leaves the hound and sniffing control visible.
+            int x = l.portrait ? 12 : 302, y = l.portrait ? 302 : 66;
+            int w = l.portrait ? 296 : 166, h = l.portrait ? 90 : 158;
             c.box(x, y, w, h, pink);
-            c.rect(x + 1, y + 1, w - 2, compact ? 24 : 32, pink);
-            c.text(x + 10, y + 9, "NEW SCENT", bg, compact ? 1 : 2);
-            c.text(x + 10, y + (compact ? 34 : 46), categories[size_t(d.category)], ink,
-                   compact && !l.portrait ? 1 : 2);
+            c.rect(x + 1, y + 1, w - 2, 24, pink);
+            c.text(x + 10, y + 9, "NEW SCENT", bg, 1);
+            c.text(x + 10, y + 34, categories[size_t(d.category)], ink, l.portrait ? 2 : 1);
             std::snprintf(text, sizeof(text), "%s / %u", badge(d.score), d.score);
-            c.text(x + 10, y + (compact ? 56 : 72), text, amber, compact ? 1 : 2);
-            if (!(compact && l.portrait))
-                c.wrap(x + 10, y + (compact ? 75 : 100),
-                       d.rule_count && d.rules[0] ? d.rules[0]->reason : "Observation received",
-                       compact ? (l.portrait ? 45 : 23) : (l.portrait ? 42 : 60), muted, 1);
-            c.text(x + 10, y + h - 16, d.demo ? "DEMO / TAP TO DISMISS" : "TAP TO DISMISS", mint,
-                   1);
+            c.text(x + 10, y + 56, text, amber, 1);
+            if (!l.portrait)
+                c.wrap(x + 10, y + 75,
+                       d.rule_count && d.rules[0] ? d.rules[0]->reason : "Observation received", 23,
+                       muted, 1, 4);
+            else
+                c.text(x + 10, y + h - 16, d.demo ? "DEMO / TAP TO DISMISS" : "TAP TO DISMISS",
+                       mint, 1);
+            button(c, l.quiet(), "SNOOZE / IGNORE", true);
         }
         break;
     }
+    case Screen::Display: {
+        std::snprintf(text, sizeof(text), "BRIGHTNESS: %u", settings.brightness);
+        button(c, l.row(0), text);
+        button(c, l.row(1), look().inverted ? "PANEL INVERSION: ON" : "PANEL INVERSION: OFF",
+               look().inverted);
+        button(c, l.row(2), settings.reduced_animation ? "ANIMATION: REDUCED" : "ANIMATION: FULL");
+        button(c, l.row(3), "COLOR / TOUCH TEST");
+        button(c, l.row(4), "BACK TO SETTINGS");
+        button(c, l.more(), "BACK TO HOUND", true);
+        c.text(16, l.h - 34, "INVERSION CHANGES THE PANEL COLOR POLARITY", muted, 1);
+        c.text(16, l.h - 20,
+               demo ? "DEMO INVERSION / NOT SAVED" : "SAVED AUTOMATICALLY / DEFAULT OFF", mint, 1);
+        break;
+    }
+    case Screen::Appearance: {
+        std::snprintf(text, sizeof(text), "THEME: %s", theme_names[look().theme]);
+        button(c, l.row(0), text);
+        std::snprintf(text, sizeof(text), "SCENE: %s", scene_names[look().scene]);
+        button(c, l.row(1), text);
+        std::snprintf(text, sizeof(text), "SPEECH: %s", speech_names[look().speech]);
+        button(c, l.row(2), text);
+        button(c, l.row(3), look().compact ? "PATROL PANEL: COMPACT" : "PATROL PANEL: DETAILED");
+        button(c, l.row(4), "BACK TO SETTINGS");
+        button(c, l.more(), "PREVIEW ON HOUND", true);
+        c.text(16, l.h - 34,
+               demo ? "DEMO APPEARANCE / SESSION ONLY" : "LOOK SAVED FOR YOUR NEXT PATROL", muted,
+               1);
+        c.text(16, l.h - 20, "LESS MOTION: SETTINGS / ANIMATION REDUCED", muted, 1);
+        break;
+    }
+    case Screen::Follow: {
+        const auto status = signal();
+        const bool fresh = status == ScentSignal::Fresh;
+        const char *labels[] = {"NO SCENT SELECTED", "SNIFFING PAUSED",    "WAITING FOR SIGNAL",
+                                "LIVE RECEPTION",    "WAITING FOR REPEAT", "SIGNAL LOST"};
+        c.text(16, 72, labels[int(status)], fresh ? mint : amber, 2);
+        if (follow.active) {
+            std::snprintf(text, sizeof(text), "%s / %s%s", categories[size_t(follow.category)],
+                          follow.radio == Radio::Ble ? "BLE" : "WI-FI",
+                          follow.demo ? " / DEMO" : "");
+            c.text(16, 96, text, muted, 1);
+            if (follow.received) {
+                std::snprintf(text, sizeof(text), "%s %d DBM", fresh ? "RSSI" : "LAST",
+                              follow.rssi);
+                c.text(16, 116, text, fresh ? ink : muted, 2);
+                std::snprintf(text, sizeof(text), "LAST SEEN %llus AGO",
+                              static_cast<unsigned long long>(
+                                  now >= follow.last_ms ? (now - follow.last_ms) / 1000 : 0));
+                c.text(16, 139, text, muted, 1);
+            } else
+                c.text(16, 121, "AWAITING A NEW READING", muted, 1);
+            int delta = follow.trend(now);
+            c.text(16, 158,
+                   !fresh        ? "NO FRESH TREND"
+                   : delta >= 4  ? "SIGNAL RISING"
+                   : delta <= -4 ? "SIGNAL FALLING"
+                                 : "STEADY / MORE SAMPLES NEEDED",
+                   mint, 1);
+            int gx = 16, gy = l.portrait ? 185 : 181;
+            int gw = l.portrait ? 288 : 292, gh = l.portrait ? 72 : 37;
+            c.box(gx, gy, gw, gh);
+            // Fixed 30-second axis; stale history ages out and gaps stay disconnected.
+            for (size_t i = 0; i < follow.count; ++i) {
+                auto point = [&](const FollowScent::Sample &a) {
+                    return display::Point{
+                        gx + gw - 3 - int((now - a.ms) * (gw - 6) / 30000),
+                        gy + gh - 3 - (std::clamp(int(a.rssi), -100, -30) + 100) * (gh - 6) / 70};
+                };
+                const auto &a = follow.history[i];
+                if (now < a.ms || now - a.ms >= 30000)
+                    continue;
+                auto p = point(a);
+                c.rect(p.x, p.y, 2, 2, fresh ? mint : muted);
+                if (i && a.ms - follow.history[i - 1].ms <= 5000 &&
+                    now - follow.history[i - 1].ms < 30000) {
+                    auto q = point(follow.history[i - 1]);
+                    c.line(q.x, q.y, p.x, p.y, fresh ? mint : muted);
+                }
+            }
+            int frame = status == ScentSignal::Paused ? 17
+                        : !fresh                      ? 8
+                        : follow.rssi >= -55          ? 22
+                        : follow.rssi >= -75          ? 4
+                                                      : 8;
+            if (!settings.reduced_animation)
+                frame += int(now / (fresh ? 200 : 700)) % 3;
+            int dx = l.portrait ? 96 : 330, dy = l.portrait ? 270 : 94;
+            c.dog(dx, dy, settings.character, frame, collection().equipped);
+            if (status == ScentSignal::Paused)
+                c.text(dx + 90, dy + 12, "ZZZ", mint, 1);
+            c.text(16, l.portrait ? 267 : 224, "30S HISTORY / -100 TO -30 DBM", muted, 1);
+        } else
+            c.wrap(16, 110, "Open a sighting in the log, then tap Follow Scent.",
+                   l.portrait ? 24 : 36, muted, 2);
+        button(c, l.confirm(false), "BACK TO HOUND");
+        button(c, l.confirm(true), "STOP FOLLOWING", true);
+        c.text(16, l.h - 38, "RECEPTION ONLY / NO DIRECTION OR DISTANCE", amber, 1);
+        c.text(16, l.h - 23, "ADDRESS CHANGES REQUIRE A NEW SELECTION", muted, 1);
+        break;
+    }
+    case Screen::ScentBook: {
+        std::snprintf(text, sizeof(text), "%u/19 FOUND", collection().discoveries());
+        c.text(l.w - 88, 46, text, mint, 1);
+        for (int i = 0; i < 6 && book_page * 6 + i < int(category_count); ++i) {
+            int index = book_page * 6 + i;
+            const auto &entry = collection().scents[index];
+            auto r = l.book(i);
+            c.box(r.x, r.y, r.w, r.h, entry.observations ? mint : grid);
+            c.food(r.x + (r.w - 40) / 2, r.y + 5, Category(index));
+            c.text(r.x + 7, r.y + 46, categories[index], entry.observations ? ink : muted, 1);
+            std::snprintf(text, sizeof(text), entry.observations ? "SEEN %lu" : "NOT SEEN YET",
+                          static_cast<unsigned long>(entry.observations));
+            c.text(r.x + 7, r.y + 60, text, entry.observations ? mint : muted, 1);
+        }
+        button(c, l.confirm(false), "BACK");
+        std::snprintf(text, sizeof(text), "NEXT / %d OF 4", book_page + 1);
+        button(c, l.confirm(true), text);
+        break;
+    }
+    case Screen::ScentCard: {
+        const auto index = std::clamp(scent_index, 0, int(category_count) - 1);
+        const auto &entry = collection().scents[index];
+        c.food(16, 70, Category(index));
+        c.text(70, 75, categories[index], mint, 2);
+        c.text(70, 98,
+               scent_page == 0   ? "FIELD GUIDE"
+               : scent_page == 1 ? "YOUR DISCOVERIES"
+                                 : "LATEST EVIDENCE",
+               muted, 1);
+        if (scent_page == 0) {
+            c.wrap(16, 120, scent_guide[index].about, l.portrait ? 46 : 72, ink, 1);
+            c.text(16, 171, "WHAT THIS CANNOT TELL YOU", amber, 1);
+            c.wrap(16, 190, scent_guide[index].caution, l.portrait ? 46 : 72, muted, 1);
+        } else if (scent_page == 1) {
+            std::snprintf(text, sizeof(text), "OBSERVATIONS: %lu / NOT UNIQUE DEVICES",
+                          static_cast<unsigned long>(entry.observations));
+            c.text(16, 120, text, ink, 1);
+            std::snprintf(text, sizeof(text), "LAST: %u / BEST: %u / %s", entry.last_score,
+                          entry.best_score,
+                          entry.observations ? badge(entry.best_score) : "NOT SEEN");
+            c.text(16, 141, text, mint, 1);
+            char date[24];
+            format_utc(entry.first_utc, date);
+            std::snprintf(text, sizeof(text), "FIRST: %s", date[0] ? date : "TIME NOT SET");
+            c.text(16, 164, text, ink, 1);
+            format_utc(entry.last_utc, date);
+            std::snprintf(text, sizeof(text), "LAST:  %s", date[0] ? date : "TIME NOT SET");
+            c.text(16, 185, text, ink, 1);
+            c.text(16, 215,
+                   demo ? "DEMO DISCOVERIES / SESSION ONLY" : "TIMES USE MANUAL UTC WHEN AVAILABLE",
+                   muted, 1);
+        } else {
+            const Detection *latest = nullptr;
+            for (size_t i = 0; i < recent_count; ++i)
+                if (int(recent[i].category) == index && recent[i].demo == demo) {
+                    latest = &recent[i];
+                    break;
+                }
+            if (latest) {
+                std::snprintf(text, sizeof(text), "%s / %u / %s", badge(latest->score),
+                              latest->score, latest->radio == Radio::Ble ? "BLE" : "WI-FI");
+                c.text(16, 120, text, amber, 1);
+                c.wrap(16, 139,
+                       latest->rule_count && latest->rules[0] ? latest->rules[0]->reason
+                                                              : "No rule detail received.",
+                       l.portrait ? 46 : 72, ink, 1);
+                for (unsigned i = 0; i < latest->rule_count && i < latest->rules.size(); ++i)
+                    if (latest->rules[i])
+                        c.text(16, 174 + i * 13, latest->rules[i]->id, muted, 1);
+            } else
+                c.wrap(16, 124,
+                       "No evidence in the recent log for this category. Discovery totals stay "
+                       "saved; live evidence is held only for recent observations.",
+                       l.portrait ? 44 : 68, muted, 1);
+        }
+        button(c, l.confirm(false), "BACK TO BOOK");
+        const char *next[] = {"STATS", "EVIDENCE", "GUIDE"};
+        button(c, l.confirm(true), next[scent_page]);
+        break;
+    }
+    case Screen::Wardrobe: {
+        bool unlocked = collection().unlocked & (1U << wardrobe_index);
+        int dog_x = l.portrait ? 96 : 176;
+        c.dog(dog_x, 68, settings.character, settings.reduced_animation ? 0 : int(now / 250) % 4,
+              wardrobe_index);
+        button(c, {12, 96, 44, 50}, "PREV");
+        button(c, {l.w - 56, 96, 44, 50}, "NEXT");
+        c.text((l.w - int(std::strlen(outfit_names[wardrobe_index])) * 12) / 2, 197,
+               outfit_names[wardrobe_index], unlocked ? mint : muted, 2);
+        std::snprintf(text, sizeof(text), "%s / XP %lu / SCENTS %u",
+                      unlocked ? "UNLOCKED" : outfit_goals[wardrobe_index],
+                      static_cast<unsigned long>(demo ? preview_xp : pet.xp),
+                      collection().discoveries());
+        c.text(16, 219, text, unlocked ? mint : amber, 1);
+        if (l.portrait) {
+            c.wrap(24, 260, "Preview any outfit. Earn XP and discover scents to unlock more gear.",
+                   23, muted, 2);
+            c.text(24, 351, demo ? "DEMO REWARDS ARE SESSION ONLY" : "OUTFITS FIT EVERY HOUND",
+                   mint, 1);
+        }
+        button(c, l.confirm(false), "BACK");
+        button(c, l.confirm(true),
+               !unlocked                                 ? "LOCKED"
+               : collection().equipped == wardrobe_index ? "WEARING"
+                                                         : "WEAR",
+               unlocked);
+        break;
+    }
+    case Screen::AlertActions:
+        button(c, l.row(0), "SNOOZE ALL: 5 MIN");
+        button(c, l.row(1), "SNOOZE ALL: 15 MIN");
+        button(c, l.row(2), "SNOOZE ALL: 60 MIN");
+        std::snprintf(text, sizeof(text), "IGNORE THIS %s",
+                      categories[size_t(action_detection.category)]);
+        button(c, l.row(3), text);
+        button(c, l.row(4), "RESUME SNOOZED ALERTS");
+        c.text(16, l.h - 34, notice[0] ? notice.data() : "QUIETS ALERTS / LOGS AND MEALS KEPT",
+               amber, 1);
+        button(c, l.more(), "BACK TO HOUND");
+        c.text(16, l.h - 21, "IGNORE APPLIES TO THIS DEVICE AND CATEGORY", muted, 1);
+        break;
+    case Screen::Ignored:
+        for (int i = 0; i < 4; ++i) {
+            const auto &entry = collection().ignored[ignored_page * 4 + i];
+            auto r = l.detector(i);
+            c.box(r.x, r.y, r.w, r.h, entry.hash ? mint : grid);
+            if (entry.hash)
+                std::snprintf(text, sizeof(text), "%s / ENTRY %02d",
+                              categories[size_t(entry.category)], ignored_page * 4 + i + 1);
+            else
+                std::snprintf(text, sizeof(text), "EMPTY SLOT %02d", ignored_page * 4 + i + 1);
+            c.text(r.x + 8, r.y + 6, text, entry.hash ? ink : muted, 1);
+            c.text(r.x + 8, r.y + (l.portrait ? 34 : 23),
+                   entry.hash ? "TAP TO RESTORE THIS SCENT'S ALERTS" : "NO IGNORED DEVICE", muted,
+                   1);
+        }
+        button(c, l.confirm(false), "BACK");
+        std::snprintf(text, sizeof(text), "NEXT / %d OF 4", ignored_page + 1);
+        button(c, l.confirm(true), text);
+        break;
     case Screen::Log:
         if (!recent_count)
             c.wrap(16, 100, "No scents yet. A quiet place is fine. Your hound is happy to wait.",
@@ -970,10 +1624,19 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
         std::snprintf(text, sizeof(text), "NEXT PAGE / %d OF 5", alert_page + 1);
         button(c, l.more(), text);
         break;
-    case Screen::Settings:
+    case Screen::Settings: {
+        constexpr const char *groups[] = {"HOUND", "DISPLAY",     "ALERTS",
+                                          "DATA",  "MAINTENANCE", "TOOLS"};
+        c.text(l.w - 12 - int(std::strlen(groups[settings_page])) * 6, 44, groups[settings_page],
+               mint, 1);
         for (int i = 0; i < 5; ++i) {
             const char *label = "";
             if (settings_page == 0) {
+                const char *labels[] = {
+                    "DOG WARDROBE", "ATMOSPHERE", "SCENT BOOK", "IGNORED SCENTS",
+                    snoozed_until() > now ? "RESUME ALERTS" : "SNOOZE ALERTS: 15 MIN"};
+                label = labels[i];
+            } else if (settings_page == 1) {
                 switch (i) {
                 case 0:
                     label = settings.rotation_locked ? "ROTATION LOCK: ON" : "ROTATION LOCK: OFF";
@@ -982,8 +1645,7 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
                     label = settings.portrait ? "VIEW: PORTRAIT" : "VIEW: LANDSCAPE";
                     break;
                 case 2:
-                    std::snprintf(text, sizeof(text), "BRIGHTNESS: %u", settings.brightness);
-                    label = text;
+                    label = "DISPLAY OPTIONS";
                     break;
                 case 3:
                     label = settings.reduced_animation ? "ANIMATION: REDUCED" : "ANIMATION: FULL";
@@ -992,7 +1654,7 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
                     label = "ALERT TYPES";
                     break;
                 }
-            } else if (settings_page == 1) {
+            } else if (settings_page == 2) {
                 const char *labels[] = {
                     settings.sound ? "SOUND: ON" : "SOUND: OFF",
                     settings.threshold == 80   ? "ALERTS: HIGH"
@@ -1002,12 +1664,12 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
                     settings.low_feeding ? "LOW FEEDING: ON" : "LOW FEEDING: OFF",
                     settings.ibeacon_alerts ? "IBEACON ALERTS: ON" : "IBEACON ALERTS: OFF"};
                 label = labels[i];
-            } else if (settings_page == 2) {
+            } else if (settings_page == 3) {
                 const char *labels[] = {settings.research ? "PRIVACY: RESEARCH"
                                                           : "PRIVACY: PRIVATE",
                                         "EXPORT HISTORY", "EJECT SD", "DEMO MODE", "DIAGNOSTICS"};
                 label = labels[i];
-            } else if (settings_page == 4) {
+            } else if (settings_page == 5) {
                 const char *labels[] = {"SET UTC TIME", "BATTERY SETUP", "CLEAR SD LOGS",
                                         "SELF TEST", "EXPORT HISTORY"};
                 label = labels[i];
@@ -1017,13 +1679,15 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
                 label = labels[i];
             }
             auto r = l.row(i);
-            button(c, r, label, settings_page == 0 && i == 0);
-            if (settings_page == 0 && i == 1 && settings.rotation_locked)
+            button(c, r, label, settings_page == 1 && i == 0);
+            if (settings_page == 1 && i == 1 && settings.rotation_locked)
                 c.text(r.x + r.w - 52, r.y + (r.h - 7) / 2, "LOCKED", muted, 1);
         }
-        std::snprintf(text, sizeof(text), "MORE / %d OF 5", settings_page + 1);
+        std::snprintf(text, sizeof(text), "MORE: %s / %d OF 6", groups[(settings_page + 1) % 6],
+                      settings_page + 1);
         button(c, l.more(), text);
         break;
+    }
     case Screen::Clock:
         c.text(16, 68, "UTC YYYYMMDDHHMM - TAP VALUE TO DELETE", muted, 1);
         c.text(16, 88, clock_input.data(), mint, 2);
@@ -1081,9 +1745,9 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
         break;
     case Screen::Diagnostics: {
         c.text(l.w - 80, 42, "SAVE SD", mint, 1);
-        const char *labels0[] = {"HEAP",    "MIN HEAP", "WIFI RX",    "BLE RX",
-                                 "WIFI OK", "BLE OK",   "WIFI BAD",   "BLE BAD",
-                                 "DROPPED", "OVERSIZE", "QUEUE HIGH", "RADIO ERR"};
+        const char *labels0[] = {"HEAP 8BIT", "MIN HEAP", "WIFI RX",    "BLE RX",
+                                 "WIFI OK",   "BLE OK",   "WIFI BAD",   "BLE BAD",
+                                 "DROPPED",   "OVERSIZE", "QUEUE HIGH", "RADIO ERR"};
         uint64_t values0[] = {heap,          min_heap,     wifi_count,     ble_count,
                               wifi_accepted, ble_accepted, wifi_malformed, ble_malformed,
                               dropped,       oversized,    queue_high,     radio_errors};
@@ -1124,7 +1788,9 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
             format_utc(utc_now(), utc);
             c.text(16, 139, utc[0] ? utc : "TIME: UPTIME ONLY", ink, 1);
             c.text(16, 166, signature_pack_version, muted, 1);
-            c.text(16, 193, "HARDWARE VALIDATION STILL REQUIRED", muted, 1);
+            std::snprintf(text, sizeof(text), "LARGEST HEAP BLOCK: %lu B",
+                          static_cast<unsigned long>(largest_heap));
+            c.text(16, 193, text, muted, 1);
         }
         std::snprintf(text, sizeof(text), "NEXT PAGE / %d OF 3", diagnostic_page + 1);
         button(c, l.more(), text);
@@ -1134,6 +1800,7 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
         if (detail_valid || selected < recent_count) {
             const auto &d = detail_valid ? detail_detection : recent[selected];
             button(c, {l.w - 108, 32, 96, 30}, detail_page ? "EVIDENCE" : "MORE");
+            button(c, {12, l.h - 40, l.w - 24, 32}, "FOLLOW SCENT", true);
             if (detail_page) {
                 c.text(16, 80, "REMOTE ID / LOCAL SNAPSHOT", mint, 1);
                 if (d.category != Category::DRONE || !detail_drone.present) {
@@ -1166,7 +1833,8 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
                     c.text(16, 174, text, ink, 1);
                     c.text(16, 210, "BROADCAST CLAIMS / NOT AUTHENTICATED", amber, 1);
                 }
-                button(c, l.more(), "BACK TO LOG");
+                button(c, l.confirm(false), "BACK TO LOG");
+                button(c, l.confirm(true), "SNOOZE / IGNORE");
                 break;
             }
             c.text(16, 78, categories[size_t(d.category)], mint, 2);
@@ -1184,7 +1852,8 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
                           static_cast<unsigned long long>(d.first_ms / 1000),
                           static_cast<unsigned long long>(d.last_ms / 1000));
             c.text(16, l.portrait ? 356 : 222, text, mint, 1);
-            button(c, l.more(), "BACK TO LOG");
+            button(c, l.confirm(false), "BACK TO LOG");
+            button(c, l.confirm(true), "SNOOZE / IGNORE");
         }
         break;
     }

@@ -12,6 +12,7 @@
 #include "nvs_flash.h"
 #include "psa/crypto.h"
 #include "signatures_generated.h"
+#include "storage_message.hpp"
 #include <algorithm>
 #include <array>
 #include <cerrno>
@@ -23,16 +24,10 @@
 namespace sniffer::storage {
 Health health;
 namespace {
-enum class Op : uint8_t { Record, Save, Export, Eject, Diagnostics, Sound, Clear, Sleep };
-struct Message {
-    Op op{};
-    Detection detection{};
-    State state{};
-    char token[21]{};
-    bool research{};
-    uint8_t region{};
-    char text[256]{};
-};
+using detail::Message;
+using detail::Op;
+using detail::Record;
+detail::Snapshots snapshots;
 StaticQueue_t control;
 uint8_t memory[8 * sizeof(Message)];
 QueueHandle_t queue;
@@ -161,8 +156,12 @@ struct PetRecord {
     std::array<MealStamp, 32> recent;
     std::array<uint8_t, 32> key;
 };
-struct BootRecord {
+// V3 has a smaller boot record. V4 requires companion data; V5 also requires appearance.
+struct BootRecordV3 {
     uint32_t boots, reason;
+};
+struct BootRecord {
+    uint32_t boots, reason, version{5};
 };
 template <class T> struct Envelope {
     uint32_t version{1}, generation{}, crc{};
@@ -206,7 +205,8 @@ bool persist(const State &s) {
     PetRecord p{s.pet, s.recent, s.meal_key};
     BootRecord b{s.boots, s.reset_reason};
     if (!write_part("hound_settings", next, c) || !write_part("hound_pet", next, p) ||
-        !write_part("hound_system", next, b))
+        !write_part("hound_system", next, b) || !write_part("hound_companion", next, s.companion) ||
+        !write_part("hound_look", next, s.appearance))
         return false;
     nvs_handle_t h{};
     if (nvs_open("system", NVS_READWRITE, &h) != ESP_OK)
@@ -376,20 +376,24 @@ void task(void *) {
         Message m{};
         if (xQueueReceive(queue, &m, pdMS_TO_TICKS(100)) == pdTRUE) {
             switch (m.op) {
-            case Op::Save:
-                if (!persist(m.state)) {
+            case Op::Save: {
+                bool ok = persist(snapshots.get(m.value));
+                snapshots.release(m.value);
+                if (!ok) {
                     ++health.save_errors;
                     health.failed = true;
                 }
                 break;
+            }
             case Op::Record: {
-                if (m.detection.demo)
+                const auto &record = std::get<Record>(m.payload);
+                if (record.detection.demo)
                     break;
 
                 if (!file || health.failed || health.ejected || health.read_only)
                     break;
-                size_t n =
-                    write_record(m.detection, session_id, m.token, m.research, line, m.region);
+                size_t n = write_record(record.detection, session_id, record.token.data(),
+                                        record.research, line, record.region);
                 if (!n)
                     break;
                 if (size + n > 4 * 1024 * 1024) {
@@ -413,7 +417,7 @@ void task(void *) {
                 break;
             }
             case Op::Sound:
-                board::sound(m.region, true);
+                board::sound(m.value, true);
                 break;
             case Op::Export:
                 export_rows();
@@ -455,8 +459,10 @@ void task(void *) {
                 space_status();
                 break;
             }
-            case Op::Sleep:
-                if (persist(m.state) && flush()) {
+            case Op::Sleep: {
+                bool ok = persist(snapshots.get(m.value));
+                snapshots.release(m.value);
+                if (ok && flush()) {
                     if (file) {
                         fclose(file);
                         file = nullptr;
@@ -465,6 +471,7 @@ void task(void *) {
                 } else
                     health.sleep_failed = true;
                 break;
+            }
             case Op::Eject:
                 flush();
                 if (file) {
@@ -477,7 +484,8 @@ void task(void *) {
                 if (health.mounted && !health.ejected && !health.read_only) {
                     FILE *f = fopen("/sd/SURVSNIFF/CRASH/LAST-RESET.JSON", "w");
                     if (f) {
-                        write_all(f, m.text, std::strlen(m.text));
+                        const auto &text = std::get<std::array<char, 256>>(m.payload);
+                        write_all(f, text.data(), std::strlen(text.data()));
                         fclose(f);
                     } else
                         ++health.errors;
@@ -498,6 +506,20 @@ bool send(const Message &m) {
     }
     return true;
 }
+bool send_snapshot(Op op, const State &state) {
+    int slot = snapshots.claim(state);
+    if (slot < 0) {
+        ++health.dropped;
+        return false;
+    }
+    Message m{};
+    m.op = op;
+    m.value = uint8_t(slot);
+    if (send(m))
+        return true;
+    snapshots.release(slot);
+    return false;
+}
 } // namespace
 bool load(State &state) {
     auto rc = nvs_flash_init();
@@ -513,9 +535,26 @@ bool load(State &state) {
         ConfigRecord c{};
         PetRecord p{};
         BootRecord b{};
-        if (!read_part("hound_settings", generation, c) || !read_part("hound_pet", generation, p) ||
-            !read_part("hound_system", generation, b))
+        if (!read_part("hound_settings", generation, c) || !read_part("hound_pet", generation, p))
             return false;
+        if (read_part("hound_system", generation, b)) {
+            if ((b.version != 4 && b.version != 5) ||
+                !read_part("hound_companion", generation, loaded.companion))
+                return false;
+            if (b.version == 5 && !read_part("hound_look", generation, loaded.appearance)) {
+                AppearanceV1 legacy{};
+                if (!read_part("hound_look", generation, legacy) ||
+                    !migrate_appearance(legacy, loaded.appearance))
+                    return false;
+            }
+        } else {
+            BootRecordV3 legacy{};
+            if (!read_part("hound_system", generation, legacy))
+                return false;
+            b.boots = legacy.boots;
+            b.reason = legacy.reason;
+            loaded.companion.unlock(p.pet.xp);
+        }
         loaded.settings = c.settings;
         loaded.calibration = c.calibration;
         loaded.battery = c.battery;
@@ -580,17 +619,15 @@ bool start(const char *session) {
 bool append(const Detection &d, const char *token, bool research, uint8_t region) {
     Message m{};
     m.op = Op::Record;
-    m.detection = d;
-    m.research = research;
-    m.region = region;
-    std::snprintf(m.token, sizeof(m.token), "%s", token);
+    auto &record = m.payload.emplace<Record>();
+    record.detection = d;
+    record.research = research;
+    record.region = region;
+    std::snprintf(record.token.data(), record.token.size(), "%s", token);
     return send(m);
 }
 bool save(const State &state) {
-    Message m{};
-    m.op = Op::Save;
-    m.state = state;
-    return send(m);
+    return send_snapshot(Op::Save, state);
 }
 bool export_history() {
     Message m{};
@@ -605,15 +642,12 @@ bool clear_logs() {
 bool sleep(const State &state) {
     if (!valid_current(state))
         return false;
-    Message m{};
-    m.op = Op::Sleep;
-    m.state = state;
-    return send(m);
+    return send_snapshot(Op::Sleep, state);
 }
 void sound(unsigned effect) {
     Message m{};
     m.op = Op::Sound;
-    m.region = effect;
+    m.value = effect;
     send(m);
 }
 bool eject() {
@@ -624,7 +658,8 @@ bool eject() {
 void diagnostics(const char *text) {
     Message m{};
     m.op = Op::Diagnostics;
-    std::snprintf(m.text, sizeof(m.text), "%s", text);
+    auto &buffer = m.payload.emplace<std::array<char, 256>>();
+    std::snprintf(buffer.data(), buffer.size(), "%s", text);
     send(m);
 }
 } // namespace sniffer::storage

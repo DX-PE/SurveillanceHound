@@ -115,6 +115,7 @@ def serve(executable, port):
                     "rotate",
                     "screen",
                     "inject",
+                    "signal",
                     "boot",
                     "reset",
                     "onboard",

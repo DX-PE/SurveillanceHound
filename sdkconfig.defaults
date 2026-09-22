@@ -32,3 +32,9 @@ CONFIG_BT_NIMBLE_HOST_BASED_PRIVACY=n
 CONFIG_BT_NIMBLE_HS_PVCY=n
 
 CONFIG_BT_NIMBLE_GATT_CLIENT=y
+
+# Passive scanning does not use connection data pools. Keep advertising event
+# buffers at their SDK defaults (30 high-priority / 8 advertising reports).
+CONFIG_BT_NIMBLE_MSYS_1_BLOCK_COUNT=4
+CONFIG_BT_NIMBLE_MSYS_2_BLOCK_COUNT=4
+CONFIG_BT_NIMBLE_TRANSPORT_ACL_FROM_LL_COUNT=4

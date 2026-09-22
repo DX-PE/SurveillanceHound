@@ -145,6 +145,10 @@ class Engine {
   public:
     explicit Engine(std::span<const Rule> rules) : rules_(rules) {}
     size_t ingest(const Observation &, const Settings &, std::span<Detection> out);
+    // One count per radio/address/type seen within 90 seconds, at its highest
+    // current confidence. Reuses the bounded evidence cache; these are signals,
+    // not people.
+    std::array<uint32_t, 3> recent_counts(uint64_t now, const Settings &) const;
 
   private:
     struct Evidence {

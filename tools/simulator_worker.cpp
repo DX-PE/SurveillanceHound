@@ -12,10 +12,15 @@
 
 namespace {
 using namespace sniffer;
-constexpr const char *screens[] = {
-    "Welcome",   "Calibration", "Choose pet", "Name pet",      "Privacy",    "Pet",
-    "Log",       "Detectors",   "Settings",   "Diagnostics",   "Details",    "Research warning",
-    "Reset pet", "Alert types", "Set time",   "Battery setup", "Clear logs", "Self test"};
+constexpr const char *screens[] = {"Welcome",       "Calibration",    "Choose pet",
+                                   "Name pet",      "Privacy",        "Pet",
+                                   "Log",           "Detectors",      "Settings",
+                                   "Diagnostics",   "Details",        "Research warning",
+                                   "Reset pet",     "Alert types",    "Set time",
+                                   "Battery setup", "Clear logs",     "Self test",
+                                   "Scent Book",    "Scent card",     "Wardrobe",
+                                   "Quiet alerts",  "Ignored scents", "Follow Scent",
+                                   "Atmosphere",    "Display options"};
 constexpr Rule flipper{"demo.flipper",
                        Category::FLIPPER,
                        Kind::Protocol,
@@ -44,6 +49,7 @@ struct Simulator {
         settings.onboarded = true;
         view.screen = ui::Screen::Home;
         view.demo = true;
+        view.identity_key.fill(0xA5); // Fixed identity key only for these synthetic samples.
         for (size_t i = 0; i < category_count; ++i)
             samples[i] = {"demo.category",
                           Category(i),
@@ -55,7 +61,7 @@ struct Simulator {
                           categories[i],
                           "DEMO: synthetic category evidence"};
     }
-    void inject(int type) {
+    void inject(int type, int dbm) {
         if (view.paused) {
             std::snprintf(view.notice.data(), view.notice.size(),
                           "HOUND SLEEPING - START SNIFFING FIRST");
@@ -75,6 +81,8 @@ struct Simulator {
         if (!d.rules[0])
             return;
         d.category = d.rules[0]->category;
+        d.address = {2, 0, 0, 0, 0, uint8_t(unsigned(d.category) + 1)};
+        d.unix_seconds = view.utc_now();
         d.score = d.rules[0]->score;
         d.rule_count = 1;
         d.demo = true;
@@ -82,14 +90,20 @@ struct Simulator {
         d.radio = type == 1 ? Radio::Wifi : Radio::Ble;
         d.first_ms = d.last_ms = view.now;
         d.seen_count = 1;
-        d.rssi_min = -72;
-        d.rssi_max = -61;
-        d.rssi_sum = -66;
+        d.rssi_min = d.rssi_max = dbm >= 30 && dbm <= 100 ? -dbm : -66;
+        d.rssi_sum = d.rssi_min;
         if (!(settings.enabled_categories & (1U << static_cast<unsigned>(d.category)))) {
             std::snprintf(view.notice.data(), view.notice.size(), "CATEGORY IS DISABLED");
             return;
         }
-        view.screen = ui::Screen::Home;
+        Observation o{};
+        o.address = d.address;
+        o.radio = d.radio;
+        o.ms = view.now;
+        o.rssi = d.rssi_min;
+        view.observe(o, true);
+        if (view.screen != ui::Screen::Follow)
+            view.screen = ui::Screen::Home;
         view.event(d);
         ++events;
     }
@@ -111,7 +125,7 @@ struct Simulator {
             view.log_page = 0;
         }
         if (requests & ui::Reset)
-            pet = Pet{};
+            view.reset_progress();
     }
     void reply() {
         std::array<char, 80> escaped_name{};
@@ -119,6 +133,12 @@ struct Simulator {
         std::cout << "{\"screen\":\"" << screens[static_cast<unsigned>(view.screen)]
                   << "\",\"pet\":\"" << assets::names[settings.character]
                   << "\",\"name\":" << escaped_name.data() << ",\"xp\":" << pet.xp
+                  << ",\"preview_xp\":" << view.preview_xp
+                  << ",\"discoveries\":" << view.collection().discoveries()
+                  << ",\"ignored\":" << view.collection().ignored_count()
+                  << ",\"snoozed\":" << (view.snoozed_until() > view.now ? "true" : "false")
+                  << ",\"following\":" << (view.follow.active ? "true" : "false")
+                  << ",\"outfit\":" << unsigned(view.collection().equipped)
                   << ",\"mood\":" << unsigned(pet.mood)
                   << ",\"fullness\":" << unsigned(pet.fullness) << ",\"width\":" << view.width()
                   << ",\"height\":" << view.height()
@@ -137,8 +157,10 @@ struct Simulator {
         for (int y = 0; y < view.height(); y += view.tile_rows()) {
             view.render(y, std::span(tile).first(view.width() * view.tile_rows()));
             for (size_t i = 0; i < size_t(view.width() * view.tile_rows()); ++i) {
-                bytes[2 * i] = static_cast<char>(tile[i] & 255);
-                bytes[2 * i + 1] = static_cast<char>(tile[i] >> 8);
+                // Emulate the panel command; native firmware changes LCD polarity instead.
+                uint16_t pixel = view.look().inverted ? uint16_t(~tile[i]) : tile[i];
+                bytes[2 * i] = static_cast<char>(pixel & 255);
+                bytes[2 * i + 1] = static_cast<char>(pixel >> 8);
             }
             std::cout.write(bytes.data(), view.width() * view.tile_rows() * 2);
         }
@@ -169,14 +191,25 @@ int main() {
             } else
                 app->view.tap(a, b);
         } else if (command == "screen" &&
-                   (a == 2 || a == 5 || a == 6 || a == 7 || a == 8 || a == 9 || a == 13)) {
+                   (a == 2 || a == 5 || a == 6 || a == 7 || a == 8 || a == 9 || a == 13 ||
+                    a == 18 || a == 20 || a == 22 || a == 23 || a == 24 || a == 25)) {
             app->view.screen = static_cast<ui::Screen>(a);
+            if (app->view.screen == ui::Screen::Settings)
+                app->view.settings_page = 0;
         } else if (command == "rotate") {
             app->view.rotate();
         } else if (command == "boot") {
             app->view.next();
+        } else if (command == "signal" && b >= 30 && b <= 100) {
+            Observation o{};
+            o.address = app->view.follow.address;
+            o.radio = app->view.follow.radio;
+            o.address_type = app->view.follow.address_type;
+            o.ms = ms;
+            o.rssi = -b;
+            app->view.observe(o, true);
         } else if (command == "inject" && a >= 0 && a < int(category_count) + 4) {
-            app->inject(a);
+            app->inject(a, b);
         }
         app->handle_requests();
         app->reply();

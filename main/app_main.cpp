@@ -52,6 +52,8 @@ void save() {
         return;
     state.recent = meals.snapshot(view.now);
     state.battery = view.battery_cal;
+    state.companion = view.companion;
+    state.appearance = view.appearance;
     if (!storage::save(state))
         std::snprintf(view.notice.data(), view.notice.size(), "SAVE QUEUE FULL");
     last_save = view.now;
@@ -108,6 +110,7 @@ void app_task(void *) {
                 ++view.wifi_accepted;
             else
                 ++view.ble_accepted;
+            view.observe(o);
             view.drones.ingest(o);
             std::array<Detection, 4> found{};
             auto count = engine.ingest(o, state.settings, found);
@@ -130,7 +133,7 @@ void app_task(void *) {
                 if (d.meal)
                     save();
                 storage::append(d, token.data(), state.settings.research, state.settings.region);
-                if (state.settings.sound && should_alert(state.settings, d))
+                if (state.settings.sound && view.alert_allowed(d))
                     storage::sound(state.pet.level() > old_level ? 2 : d.meal ? 1 : 0);
             }
         }
@@ -193,6 +196,7 @@ void app_task(void *) {
         view.requests = 0;
         if (request & ui::Calibrate) {
             radio::pause(true);
+            view.follow.restart(view.now);
             calibrating = true;
             view.calibration_step = 0;
         }
@@ -210,6 +214,8 @@ void app_task(void *) {
         }
         if (request & ui::Rotate)
             board::orientation(state.settings.portrait);
+        if (request & ui::Invert)
+            board::inversion(view.look().inverted);
         if (request & ui::Start)
             begin_radio();
         if (request & ui::Save) {
@@ -230,12 +236,12 @@ void app_task(void *) {
         if (request & ui::DiagnosticCopy)
             diagnostics();
         if (request & ui::Reset) {
-            if (!view.demo) {
-                state.pet = Pet{};
-                save();
-            }
+            view.reset_progress();
+            save();
         }
         if (request & ui::Demo) {
+            board::inversion(view.look().inverted);
+            view.follow = {};
             if (view.demo) {
                 real_pet = state.pet;
                 radio::pause(true);
@@ -256,6 +262,16 @@ void app_task(void *) {
             d.rule_count = 1;
             d.score = d.rules[0]->score;
             d.seen_count = 1;
+            d.address = {2, 0, 0, 0, 0, uint8_t(unsigned(d.category) + 1)};
+            d.radio = d.category == Category::PINEAPPLE ? Radio::Wifi : Radio::Ble;
+            d.first_ms = d.last_ms = view.now;
+            Observation sample{};
+            sample.address = d.address;
+            sample.radio = d.radio;
+            sample.ms = view.now;
+            sample.rssi = -65;
+            view.observe(sample, true);
+            d.rssi_sum = -65;
             d.rssi_min = -70;
             d.rssi_max = -60;
             view.event(d);
@@ -263,8 +279,10 @@ void app_task(void *) {
         }
         if (view.now - last_save >= 60000)
             save();
-        view.heap = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-        view.min_heap = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
+        constexpr uint32_t heap_caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+        view.memory_status(heap_caps_get_free_size(heap_caps),
+                           heap_caps_get_minimum_free_size(heap_caps),
+                           heap_caps_get_largest_free_block(heap_caps));
         view.wifi_count = radio::metrics.wifi_seen;
         view.ble_count = radio::metrics.ble_seen;
         view.dropped = radio::metrics.dropped + storage::health.dropped;
@@ -298,6 +316,8 @@ void app_task(void *) {
         }
 
         if (view.now - last_diag >= 2000) {
+            if (!view.demo)
+                view.counts = engine.recent_counts(view.now, state.settings);
             view.battery_adc = board::battery_raw();
             view.battery_millivolts =
                 view.battery_cal.enabled ? battery_mv(view.battery_cal, view.battery_adc) : -1;
@@ -328,8 +348,29 @@ void app_task(void *) {
                               "SD FLUSH FAILED - CONNECT POWER");
             last_diag = view.now;
         }
-        if (view.heap < 80000)
-            std::snprintf(view.notice.data(), view.notice.size(), "LOW HEAP - SEE DIAGNOSTICS");
+        // Aggregate USB health only: no addresses, names, tokens or radio payloads.
+        static uint64_t last_health{};
+        if ((!last_health && view.now >= 5000) ||
+            (last_health && view.now - last_health >= 30000)) {
+            std::printf("HOUND health: heap=%lu min=%lu largest=%lu stacks=%lu/%lu/%lu/%lu "
+                        "wifi=%lu ble=%lu drops=%lu radio_errors=%lu save_errors=%lu strong=%lu "
+                        "likely=%lu\n",
+                        static_cast<unsigned long>(view.heap),
+                        static_cast<unsigned long>(view.min_heap),
+                        static_cast<unsigned long>(view.largest_heap),
+                        static_cast<unsigned long>(view.stack_free),
+                        static_cast<unsigned long>(view.radio_stack),
+                        static_cast<unsigned long>(view.ble_stack),
+                        static_cast<unsigned long>(view.storage_stack),
+                        static_cast<unsigned long>(view.wifi_count),
+                        static_cast<unsigned long>(view.ble_count),
+                        static_cast<unsigned long>(view.dropped),
+                        static_cast<unsigned long>(view.radio_errors),
+                        static_cast<unsigned long>(storage::health.save_errors.load()),
+                        static_cast<unsigned long>(view.counts[0]),
+                        static_cast<unsigned long>(view.counts[1]));
+            last_health = view.now;
+        }
         bool alert = view.alert_until > view.now && !view.paused;
         bool pulse = (view.now / 250) % 2 == 0;
         board::led(alert && view.alert_detection.score >= 80 && pulse,
@@ -370,6 +411,11 @@ extern "C" void app_main() {
         }
     }
     view.battery_cal = state.battery;
+    view.companion = state.companion;
+    view.appearance = view.preview_appearance = state.appearance;
+    board::inversion(view.look().inverted);
+    view.companion.unlock(state.pet.xp);
+    view.identity_key = state.meal_key;
     view.known_level = state.pet.level();
     board::orientation(state.settings.portrait);
     esp_fill_random(session_key.data(), session_key.size());
