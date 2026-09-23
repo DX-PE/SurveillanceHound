@@ -12,16 +12,36 @@
 
 namespace {
 using namespace sniffer;
-constexpr const char *screens[] = {"Welcome",       "Calibration",     "Choose pet",
-                                   "Name pet",      "Privacy",         "Pet",
-                                   "Log",           "Detectors",       "Settings",
-                                   "Diagnostics",   "Details",         "Research warning",
-                                   "Reset pet",     "Alert types",     "Set time",
-                                   "Battery setup", "Clear logs",      "Self test",
-                                   "Scent Book",    "Scent card",      "Wardrobe",
-                                   "Quiet alerts",  "Ignored scents",  "Follow Scent",
-                                   "Atmosphere",    "Display options", "Tag Watch",
-                                   "Watch progress"};
+constexpr const char *screens[] = {"Welcome",
+                                   "Calibration",
+                                   "Choose pet",
+                                   "Name pet",
+                                   "Privacy",
+                                   "Pet",
+                                   "Log",
+                                   "Detectors",
+                                   "Settings",
+                                   "Diagnostics",
+                                   "Details",
+                                   "Research warning",
+                                   "Reset pet",
+                                   "Alert types",
+                                   "Set time",
+                                   "Battery setup",
+                                   "Clear logs",
+                                   "Self test",
+                                   "Scent Book",
+                                   "Scent card",
+                                   "Wardrobe",
+                                   "Quiet alerts",
+                                   "Ignored scents",
+                                   "Follow Scent",
+                                   "Atmosphere",
+                                   "Display options",
+                                   "Tag Watch",
+                                   "Watch progress",
+                                   "Screen saver",
+                                   "Ignore backup"};
 constexpr Rule flipper{"demo.flipper",
                        Category::FLIPPER,
                        Kind::Protocol,
@@ -115,9 +135,9 @@ struct Simulator {
         view.demo = true; // All host activity remains synthetic, even after the
                           // device demo toggle.
         if (requests & ui::Export)
-            std::snprintf(view.notice.data(), view.notice.size(), "SIMULATOR: NO SD OR REAL LOGS");
+            view.export_status = ui::ExportStatus::Demo;
         if (requests & ui::Eject)
-            std::snprintf(view.notice.data(), view.notice.size(), "SIMULATOR: NO CARD TO EJECT");
+            view.eject_status = ui::EjectStatus::Demo;
         if (requests & ui::DiagnosticCopy)
             std::snprintf(view.notice.data(), view.notice.size(), "SIMULATOR: NO SD WRITES");
         if (requests & ui::Calibrate)
@@ -138,14 +158,17 @@ struct Simulator {
                   << ",\"preview_xp\":" << view.preview_xp
                   << ",\"discoveries\":" << view.collection().discoveries()
                   << ",\"ignored\":" << view.collection().ignored_count()
+                  << ",\"ignore_capacity\":" << ignore_capacity
                   << ",\"snoozed\":" << (view.snoozed_until() > view.now ? "true" : "false")
                   << ",\"following\":" << (view.follow.active ? "true" : "false")
                   << ",\"tag_watch_armed\":" << (view.tag_watch.armed ? "true" : "false")
                   << ",\"tag_watch_warning\":" << (view.watch_warning() ? "true" : "false")
                   << ",\"tag_watch_red\":" << (view.watch_red() ? "true" : "false")
+                  << ",\"display_mode\":" << unsigned(view.display_mode)
+                  << ",\"brightness\":" << view.display_brightness()
                   << ",\"outfit\":" << unsigned(view.collection().equipped)
-                  << ",\"mood\":" << unsigned(pet.mood)
-                  << ",\"fullness\":" << unsigned(pet.fullness) << ",\"width\":" << view.width()
+                  << ",\"mood\":" << unsigned(view.mood())
+                  << ",\"fullness\":" << unsigned(view.fullness()) << ",\"width\":" << view.width()
                   << ",\"height\":" << view.height()
                   << ",\"rotation_locked\":" << (settings.rotation_locked ? "true" : "false")
                   << ",\"alert_categories\":" << settings.alert_categories
@@ -164,6 +187,11 @@ struct Simulator {
             for (size_t i = 0; i < size_t(view.width() * view.tile_rows()); ++i) {
                 // Emulate the panel command; native firmware changes LCD polarity instead.
                 uint16_t pixel = view.look().inverted ? uint16_t(~tile[i]) : tile[i];
+                // Model the physical backlight, including true zero while blanked.
+                unsigned light = view.display_brightness();
+                pixel = uint16_t(((((pixel >> 11) & 31) * light / 100) << 11) |
+                                 ((((pixel >> 5) & 63) * light / 100) << 5) |
+                                 ((pixel & 31) * light / 100));
                 bytes[2 * i] = static_cast<char>(pixel & 255);
                 bytes[2 * i + 1] = static_cast<char>(pixel >> 8);
             }
@@ -188,7 +216,11 @@ int main() {
         }
         ms += app->time_offset;
         app->view.now = ms;
+        app->view.tick_pet();
         app->view.update_tag_watch();
+        if (command == "reset" || command == "onboard")
+            app->view.wake_display();
+        app->view.update_display();
         if (command == "tap" && a >= 0 && a < app->view.width() && b >= 0 &&
             b < app->view.height()) {
             if (app->view.screen == ui::Screen::Calibration) {
@@ -197,9 +229,11 @@ int main() {
                         app->settings.onboarded ? ui::Screen::Home : ui::Screen::Welcome;
             } else
                 app->view.tap(a, b);
-        } else if (command == "screen" && (a == 2 || a == 5 || a == 6 || a == 7 || a == 8 ||
-                                           a == 9 || a == 13 || a == 18 || a == 20 || a == 22 ||
-                                           a == 23 || a == 24 || a == 25 || a == 26 || a == 27)) {
+        } else if (command == "screen" &&
+                   (a == 2 || a == 5 || a == 6 || a == 7 || a == 8 || a == 9 || a == 13 ||
+                    a == 18 || a == 20 || a == 22 || a == 23 || a == 24 || a == 25 || a == 26 ||
+                    a == 27 || a == 28)) {
+            app->view.wake_display();
             app->view.screen = static_cast<ui::Screen>(a);
             if (app->view.screen == ui::Screen::Settings)
                 app->view.settings_page = 0;
@@ -227,11 +261,33 @@ int main() {
                 app->inject(a, b, false);
             }
             app->time_offset += 600000;
+        } else if (command == "pet_care" && a >= 0 && a <= 2) {
+            app->view.screen = ui::Screen::Home;
+            app->view.meal_until = app->view.celebration_until = app->view.happy_until = 0;
+            app->view.unlock_until = app->view.level_until = app->view.alert_until = 0;
+            if (a < 2) {
+                app->view.preview_fullness = a == 0 ? 15 : 60;
+                app->view.preview_mood = a == 1 ? 15 : 60;
+                app->view.preview_decay_ms = ms;
+            } else {
+                app->time_offset += 1800000;
+                app->view.now = ms + 1800000;
+                app->view.tick_pet();
+            }
+        } else if (command == "idle_test" && a >= 0 && a <= 60) {
+            if (a == 0)
+                app->view.preview_saver();
+            else {
+                app->time_offset += uint64_t(a) * 60000;
+                app->view.now += uint64_t(a) * 60000;
+                app->view.tick_pet();
+            }
         } else if (command == "inject" && a >= 0 && a < int(category_count) + 4) {
             app->inject(a, b);
         }
         app->handle_requests();
         app->view.update_tag_watch();
+        app->view.update_display();
         app->reply();
     }
 }

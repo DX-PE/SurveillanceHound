@@ -21,6 +21,20 @@ STATES = [
 ]
 
 
+def with_rim(pixels):
+    result = pixels.copy()
+    for y in range(64):
+        for x in range(64):
+            if pixels[y * 64 + x]:
+                continue
+            if any(
+                0 <= x + dx < 64 and 0 <= y + dy < 64 and pixels[(y + dy) * 64 + x + dx]
+                for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1))
+            ):
+                result[y * 64 + x] = 7
+    return result
+
+
 def rgb565(value):
     r, g, b = (int(value[i : i + 2], 16) for i in (0, 2, 4))
     return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
@@ -113,8 +127,9 @@ def sprite(character, state, frame):
             rect(37, 43 + row - bob, 8 - row, 1, 6)
         rect(38, 44 - bob, 2, 2, 5)
         return p
-    y = 27 - bounce + (3 if state == "SNIFF" else 0)
-    wag = frame % 3 - 1
+    sad = state == "HUNGRY"
+    y = 27 - bounce + (3 if state == "SNIFF" else 2 + frame if sad else 0)
+    wag = 0 if sad else frame % 3 - 1
     # A substantial body, paws, wagging tail and ears keep every silhouette canine.
     if character["tail"] in (2, 3):
         outlined(51, 38 + wag, 9, 9, 1)
@@ -154,7 +169,13 @@ def sprite(character, state, frame):
     oval(32, y + 9, 13, 8, 2)
     closed = state == "SLEEP" or state == "IDLE" and frame == 3
     for x in (22, 40):
-        if closed:
+        if sad:
+            # Heavy eyelids and falling tears; shared by hunger and low spirits.
+            rect(x - 4, y - 2, 8, 2, 3)
+            rect(x - 2, y, 5, 2, 3)
+            oval(x, y + 7 + frame * 4, 2, 4, 5)
+            rect(x - 1, y + 4 + frame * 4, 1, 2, 2)
+        elif closed:
             rect(x - 3, y, 7, 2, 3)
         else:
             rect(x - 3, y - 4, 7, 8, 3)
@@ -166,7 +187,12 @@ def sprite(character, state, frame):
     oval(32, y + 6, 5, 3, 3)
     rect(30, y + 4, 3, 1, 2)
     rect(31, y + 8, 2, 4, 3)
-    rect(26, y + 12, 12, 2, 3)
+    if sad:
+        rect(28, y + 11, 8, 2, 3)
+        rect(25, y + 13, 4, 2, 3)
+        rect(36, y + 13, 4, 2, 3)
+    else:
+        rect(26, y + 12, 12, 2, 3)
     if state in ("EAT", "HAPPY", "WALK"):
         oval(33, y + 14, 4, 3 + frame % 2, 3)
         rect(31, y + 14, 4, 4, 4)
@@ -213,7 +239,7 @@ def generate(check=False):
         frames = []
         for state, count in STATES:
             for f in range(count):
-                pixels = sprite(c, state, f)
+                pixels = with_rim(sprite(c, state, f))
                 packed = encode(pixels)
                 frames.append((len(data), len(packed)))
                 data += packed
@@ -230,7 +256,7 @@ def generate(check=False):
         "inline constexpr const char* names[] = {"
         + ",".join(json.dumps(c["name"]) for c in chars)
         + "};",
-        "inline constexpr uint16_t palettes[6][7] = {",
+        "inline constexpr uint16_t palettes[6][8] = {",
     ]
     for c in chars:
         text.append(
@@ -245,6 +271,7 @@ def generate(check=False):
                     "FF8B9A",
                     "78ECE3",
                     c["accent"],
+                    "9AA4B5",  # Soft rim light separates black ears from dark backgrounds.
                 ]
             )
             + "},"

@@ -4,7 +4,8 @@
 #include <algorithm>
 
 namespace sniffer {
-// Presence heuristic only: no location, motion inference or rotating-address correlation.
+// Presence heuristic only: no location or motion inference. Keys may follow an exact
+// Samsung broadcast ID across radio addresses, never correlate different broadcast IDs.
 // RAM-only, keyed identities. Packet floods cannot accelerate the time requirement.
 struct TagWatch {
     static constexpr uint64_t duration = 600000, gap = 120000;
@@ -68,6 +69,11 @@ struct TagWatch {
         if (now - d.last_ms > gap)
             return;
         auto *e = find(hash);
+        if (samsung_connected(d)) {
+            if (e && d.last_ms >= e->last)
+                drop(*e, false);
+            return;
+        }
         if (e && d.last_ms <= e->last)
             return;
         if (!e) {

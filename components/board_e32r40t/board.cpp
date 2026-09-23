@@ -186,8 +186,12 @@ bool calibrate(const Point p[3], const Point s[3], Calibration &c) {
     c.valid = true;
     return true;
 }
+void display_power(bool on) {
+    // ST7796 DISPON / DISPOFF: retain display RAM and touch, without MCU sleep.
+    command(on ? 0x29 : 0x28);
+}
 void brightness(unsigned percent) {
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, std::clamp(percent, 5U, 100U) * 1023 / 100);
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, std::min(percent, 100U) * 1023 / 100);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
 }
 bool button() {

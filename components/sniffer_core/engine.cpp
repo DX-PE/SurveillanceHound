@@ -20,11 +20,8 @@ bool hex_prefix(std::string_view value, std::span<const uint8_t> data) {
     return true;
 }
 size_t group(Kind k) {
-    if (k == Kind::SsidPrefix)
-        k = Kind::SsidExact;
-    if (k == Kind::NamePrefix)
-        k = Kind::NameExact;
-    return static_cast<size_t>(k);
+    const auto index = static_cast<size_t>(k);
+    return index - (index >= size_t(Kind::SsidPrefix)) - (index >= size_t(Kind::NamePrefix));
 }
 uint8_t cap(const Rule &rule, const Observation &o) {
     uint8_t limit = rule.cap;
@@ -191,8 +188,11 @@ size_t Engine::ingest(const Observation &o, const Settings &settings, std::span<
         if (!e) {
             for (auto &candidate : cache_) {
                 const auto &d = candidate.detection;
-                if (candidate.used && d.address == o.address && d.category == rule.category &&
-                    d.radio == o.radio && d.address_type == o.address_type) {
+                const bool payload_identity = samsung_identity(d) && o.samsung.valid();
+                const bool same = payload_identity
+                                      ? d.samsung.id == o.samsung.id
+                                      : d.address == o.address && d.address_type == o.address_type;
+                if (d.seen_count && same && d.category == rule.category && d.radio == o.radio) {
                     e = &candidate;
                     break;
                 }
@@ -202,12 +202,11 @@ size_t Engine::ingest(const Observation &o, const Settings &settings, std::span<
                     return a.detection.last_ms < b.detection.last_ms;
                 });
                 for (auto &candidate : cache_)
-                    if (!candidate.used) {
+                    if (!candidate.detection.seen_count) {
                         e = &candidate;
                         break;
                     }
                 *e = {};
-                e->used = true;
                 auto &d = e->detection;
                 d.category = rule.category;
                 d.radio = o.radio;
@@ -221,6 +220,10 @@ size_t Engine::ingest(const Observation &o, const Settings &settings, std::span<
             if (o.ms < d.last_ms || o.ms - d.last_ms > 30000)
                 e->evidence.fill({});
             d.last_ms = o.ms;
+            d.address = o.address;
+            d.address_type = o.address_type;
+            d.samsung = d.category == Category::SAMSUNG_TAG && o.radio == Radio::Ble ? o.samsung
+                                                                                     : SamsungTag{};
             d.channel = o.channel;
             d.rssi_min = std::min(d.rssi_min, o.rssi);
             d.rssi_max = std::max(d.rssi_max, o.rssi);
@@ -241,7 +244,7 @@ size_t Engine::ingest(const Observation &o, const Settings &settings, std::span<
             continue;
         auto &d = e->detection;
         uint8_t old_score = d.score;
-        std::array<const Rule *, kind_count> active{};
+        std::array<const Rule *, evidence_group_count> active{};
         size_t count = 0;
         for (auto &ev : e->evidence)
             if (ev.rule && uint32_t(o.ms) - ev.at <= 30000)
@@ -272,6 +275,7 @@ size_t Engine::ingest(const Observation &o, const Settings &settings, std::span<
             score = score > 20 ? score - 20 : 1;
         d.score = static_cast<uint8_t>(score);
         const bool due = !e->emitted || o.ms - e->emitted >= 30000 ||
+                         d.samsung.state != e->emitted_samsung_state ||
                          (d.score >= 80   ? 3
                           : d.score >= 50 ? 2
                           : d.score >= 20 ? 1
@@ -282,6 +286,7 @@ size_t Engine::ingest(const Observation &o, const Settings &settings, std::span<
         if (due && o.ms >= next_emit_ && n < out.size()) {
             out[n++] = d;
             e->emitted = std::max<uint64_t>(1, o.ms);
+            e->emitted_samsung_state = d.samsung.state;
             next_emit_ = o.ms + 100;
         }
     }
@@ -291,7 +296,7 @@ std::array<uint32_t, 3> Engine::recent_counts(uint64_t now, const Settings &sett
     std::array<uint32_t, 3> counts{};
     auto active = [&](const Entry &e) {
         const auto &d = e.detection;
-        return e.used && d.score >= 20 && now >= d.last_ms && now - d.last_ms <= 90000 &&
+        return d.seen_count && d.score >= 20 && now >= d.last_ms && now - d.last_ms <= 90000 &&
                (settings.enabled_categories & (1U << unsigned(d.category)));
     };
     for (size_t i = 0; i < cache_.size(); ++i) {
@@ -303,9 +308,11 @@ std::array<uint32_t, 3> Engine::recent_counts(uint64_t now, const Settings &sett
             if (i == j || !active(cache_[j]))
                 continue;
             const auto &other = cache_[j].detection;
-            if (d.address == other.address && d.radio == other.radio &&
-                d.address_type == other.address_type &&
-                (other.score > d.score || (other.score == d.score && j < i))) {
+            const bool same = samsung_identity(d) && samsung_identity(other)
+                                  ? d.samsung.id == other.samsung.id
+                                  : d.address == other.address && d.radio == other.radio &&
+                                        d.address_type == other.address_type;
+            if (same && (other.score > d.score || (other.score == d.score && j < i))) {
                 already_counted = true;
                 break;
             }
@@ -315,25 +322,34 @@ std::array<uint32_t, 3> Engine::recent_counts(uint64_t now, const Settings &sett
     }
     return counts;
 }
-void Pet::tick(uint64_t now) {
-    if (now < decay_ms)
-        decay_ms = now;
-    uint64_t hours = (now - decay_ms) / 3600000;
-    if (!hours)
+void Pet::decay_needs(uint64_t now, uint64_t &clock, uint8_t &fullness, uint8_t &mood) {
+    if (now < clock)
+        clock = now;
+    const uint64_t steps = (now - clock) / needs_interval_ms;
+    if (!steps)
         return;
-    fullness = static_cast<uint8_t>(fullness > hours ? fullness - hours : 0);
-    mood = static_cast<uint8_t>(mood > hours + 20 ? mood - hours : 20);
-    decay_ms += hours * 3600000;
+    fullness = static_cast<uint8_t>(fullness > steps * 3 ? fullness - steps * 3 : 0);
+    mood = static_cast<uint8_t>(mood > steps * 2 ? mood - steps * 2 : 0);
+    clock += steps * needs_interval_ms;
+}
+void Pet::tick(uint64_t now) {
+    decay_needs(now, decay_ms, fullness, mood);
+}
+void Pet::nourish(uint8_t score, uint8_t &fullness, uint8_t &mood) {
+    // An earned meal rescues a sad hound as well as topping up a content one.
+    fullness = std::clamp<int>(fullness + (score >= 80 ? 20 : score >= 50 ? 14 : 6), 35, 100);
+    mood = std::clamp<int>(mood + (score >= 80 ? 15 : score >= 50 ? 12 : 6), 40, 100);
 }
 void Pet::feed(const Detection &d, bool low) {
-    if (d.demo || !d.meal || (d.score < 50 && !low))
+    if (d.demo || !d.meal || d.score < (low ? 20 : 50) || size_t(d.category) >= category_count ||
+        d.score > 100)
         return;
     const auto c = static_cast<size_t>(d.category);
     uint32_t bonus = (category_mask & (1U << c)) ? 0 : 3;
     category_mask |= 1U << c;
     xp += (d.score >= 80 ? 10 : d.score >= 50 ? 5 : 1) + bonus;
-    fullness = std::min<int>(100, fullness + (d.score >= 80 ? 12 : d.score >= 50 ? 7 : 0));
-    mood = std::min<int>(100, mood + 3);
+    nourish(d.score, fullness, mood);
+    decay_ms = d.last_ms;
     ++meals;
     ++lifetime_meals[c];
 }

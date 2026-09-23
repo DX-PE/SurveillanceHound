@@ -17,14 +17,63 @@ struct ScentEntry {
     uint8_t best_score{}, last_score{};
     int8_t strongest{-127};
 };
-struct IgnoredScent {
-    uint64_t hash{}; // Keyed digest of address, radio, address type and category; never a raw MAC.
-    Category category{};
+// Byte storage avoids seven padding bytes per entry and unaligned uint64_t loads.
+constexpr size_t ignore_capacity = 64;
+enum class IgnoreBackupStatus : uint8_t {
+    Waiting,
+    Checking,
+    Unavailable,
+    Saved,
+    NoCard,
+    Ejected,
+    ReadOnly,
+    Failed,
+    InternalError
 };
-struct Companion {
+struct IgnoredScent {
+    std::array<uint8_t, 8> digest{};
+    Category category{};
+    constexpr IgnoredScent() = default;
+    constexpr IgnoredScent(uint64_t value, Category type) : category(type) {
+        for (unsigned i = 0; i < 8; ++i)
+            digest[i] = uint8_t(value >> (8 * i));
+    }
+    constexpr uint64_t hash() const {
+        uint64_t value = 0;
+        for (unsigned i = 0; i < 8; ++i)
+            value |= uint64_t(digest[i]) << (8 * i);
+        return value;
+    }
+    bool operator==(const IgnoredScent &) const = default;
+};
+static_assert(sizeof(IgnoredScent) == 9 && alignof(IgnoredScent) == 1);
+using IgnoreList = std::array<IgnoredScent, ignore_capacity>;
+inline bool valid_ignores(const IgnoreList &list) {
+    for (size_t i = 0; i < list.size(); ++i) {
+        if (size_t(list[i].category) >= category_count)
+            return false;
+        for (size_t j = 0; list[i].hash() && j < i; ++j)
+            if (list[j].hash() == list[i].hash())
+                return false;
+    }
+    return true;
+}
+// Frozen raw NVS layout. Migration never changes an existing keyed identity.
+struct CompanionV1 {
     uint32_t version{1};
     std::array<ScentEntry, category_count> scents{};
-    std::array<IgnoredScent, 16> ignored{};
+    struct Entry {
+        uint64_t hash{};
+        Category category{};
+    };
+    std::array<Entry, 16> ignored{};
+    uint8_t equipped{}, unlocked{1};
+};
+static_assert(sizeof(CompanionV1) == 728);
+struct Companion {
+    uint32_t version{2};
+    std::array<ScentEntry, category_count> scents{};
+    IgnoreList ignored{};
     uint8_t equipped{}, unlocked{1};
     unsigned discoveries() const {
         unsigned n = 0;
@@ -57,7 +106,7 @@ struct Companion {
         if (!hash)
             return false;
         for (const auto &entry : ignored)
-            if (entry.hash == hash)
+            if (entry.hash() == hash)
                 return true;
         return false;
     }
@@ -67,7 +116,7 @@ struct Companion {
         if (is_ignored(hash))
             return true;
         for (auto &entry : ignored)
-            if (!entry.hash) {
+            if (!entry.hash()) {
                 entry = {hash, category};
                 return true;
             }
@@ -76,26 +125,34 @@ struct Companion {
     unsigned ignored_count() const {
         unsigned count = 0;
         for (const auto &entry : ignored)
-            count += entry.hash != 0;
+            count += entry.hash() != 0;
         return count;
     }
 };
 inline bool valid_companion(const Companion &c) {
-    if (c.version != 1 || c.equipped >= outfit_count || !(c.unlocked & 1) ||
+    if (c.version != 2 || c.equipped >= outfit_count || !(c.unlocked & 1) ||
         (c.unlocked >> outfit_count) || !(c.unlocked & (1U << c.equipped)))
         return false;
     for (const auto &s : c.scents)
         if (s.best_score > 100 || s.last_score > s.best_score || s.first_utc > 4102444799ULL ||
             s.last_utc > 4102444799ULL)
             return false;
-    for (size_t i = 0; i < c.ignored.size(); ++i) {
-        const auto &e = c.ignored[i];
-        if (size_t(e.category) >= category_count)
-            return false;
-        for (size_t j = 0; e.hash && j < i; ++j)
-            if (c.ignored[j].hash == e.hash)
-                return false;
-    }
+    return valid_ignores(c.ignored);
+}
+inline bool migrate_companion(const CompanionV1 &old, Companion &out) {
+    if (old.version != 1)
+        return false;
+    Companion next{};
+    next.scents = old.scents;
+    next.equipped = old.equipped;
+    next.unlocked = old.unlocked;
+    for (size_t i = 0; i < old.ignored.size(); ++i)
+        next.ignored[i] = {old.ignored[i].hash, old.ignored[i].category};
+    if (!valid_companion(next))
+        return false;
+    out = next;
     return true;
 }
+static_assert(sizeof(Companion) == 1048);
+
 } // namespace sniffer

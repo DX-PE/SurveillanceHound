@@ -56,6 +56,23 @@ enum class Kind : uint8_t {
 };
 constexpr size_t kind_count = static_cast<size_t>(Kind::Count);
 using Address = std::array<uint8_t, 6>;
+// A supported Samsung finding advertisement. The broadcast ID can itself rotate.
+// Connection state is an unauthenticated claim, never proof of ownership.
+enum class SamsungState : uint8_t {
+    Unavailable,
+    Unknown,
+    RecentlySeparated,
+    Offline,
+    LongOffline,
+    Connected
+};
+struct SamsungTag {
+    std::array<uint8_t, 8> id{};
+    SamsungState state{SamsungState::Unavailable};
+    bool valid() const {
+        return state != SamsungState::Unavailable;
+    }
+};
 struct Observation {
     uint64_t ms{};
     Address address{};
@@ -76,6 +93,7 @@ struct Observation {
     uint8_t manufacturer_len{}, service_len{};
     std::array<uint8_t, 128> vendor{};
     uint8_t vendor_len{};
+    SamsungTag samsung{};
 };
 struct Rule {
     const char *id;
@@ -87,20 +105,29 @@ struct Rule {
     const char *label;
     const char *reason;
 };
+// Volatile, field-serialized event data: group aligned members to avoid padding in
+// every cache/history entry. This is not a persisted NVS or on-card binary layout.
 struct Detection {
+    uint64_t first_ms{}, last_ms{}, unix_seconds{};
+    int64_t rssi_sum{};
+    std::array<const Rule *, 4> rules{};
+    uint32_t seen_count{};
+    SamsungTag samsung{};
+    Address address{};
     Category category{};
     Radio radio{};
-    Address address{};
-    uint8_t address_type{}, channel{}, score{};
-    uint64_t first_ms{}, last_ms{};
+    uint8_t address_type{}, channel{}, score{}, rule_count{};
     int8_t rssi_min{}, rssi_max{};
-    int64_t rssi_sum{};
-    uint32_t seen_count{};
-    std::array<const Rule *, 4> rules{};
-    uint8_t rule_count{};
-    uint64_t unix_seconds{};
     bool meal{}, demo{};
 };
+static_assert(sizeof(Detection) <= (sizeof(void *) == 4 ? 80 : 96),
+              "Keep volatile detection metadata within its RAM budget");
+inline bool samsung_identity(const Detection &d) {
+    return d.category == Category::SAMSUNG_TAG && d.radio == Radio::Ble && d.samsung.valid();
+}
+inline bool samsung_connected(const Detection &d) {
+    return samsung_identity(d) && d.samsung.state == SamsungState::Connected;
+}
 struct Settings {
     uint32_t version{2};
     uint32_t enabled_categories{(1U << category_count) - 1U};
@@ -113,9 +140,14 @@ struct Settings {
 };
 inline bool should_alert(const Settings &s, const Detection &d) {
     return unsigned(d.category) < category_count &&
-           (s.alert_categories & (1U << unsigned(d.category))) && d.score >= s.threshold;
+           (s.alert_categories & (1U << unsigned(d.category))) && d.score >= s.threshold &&
+           !samsung_connected(d);
 }
 struct Pet {
+    static constexpr uint64_t needs_interval_ms = 300000;
+    static constexpr uint8_t low_needs = 25;
+    static void decay_needs(uint64_t now, uint64_t &clock, uint8_t &fullness, uint8_t &mood);
+    static void nourish(uint8_t score, uint8_t &fullness, uint8_t &mood);
     uint32_t xp{}, meals{}, unique{}, category_mask{};
     std::array<uint32_t, category_count> lifetime_meals{};
     uint8_t fullness{70}, mood{70};
@@ -145,7 +177,8 @@ class Engine {
   public:
     explicit Engine(std::span<const Rule> rules) : rules_(rules) {}
     size_t ingest(const Observation &, const Settings &, std::span<Detection> out);
-    // One count per radio/address/type seen within 90 seconds, at its highest
+    // One count per identity (Samsung broadcast ID, otherwise radio/address/type)
+    // seen within 90 seconds, at its highest
     // current confidence. Reuses the bounded evidence cache; these are signals,
     // not people.
     std::array<uint32_t, 3> recent_counts(uint64_t now, const Settings &) const;
@@ -155,11 +188,14 @@ class Engine {
         const Rule *rule{};
         uint32_t at{};
     };
+    // Exact/prefix SSID and name rules share evidence groups. Keep those groups
+    // dense rather than reserving unused slots in every cached identity.
+    static constexpr size_t evidence_group_count = kind_count - 2;
     struct Entry {
-        bool used{};
-        Detection detection{};
+        Detection detection{}; // seen_count == 0 marks an unused entry.
         uint64_t emitted{};
-        std::array<Evidence, kind_count> evidence{};
+        SamsungState emitted_samsung_state{};
+        std::array<Evidence, evidence_group_count> evidence{};
     };
     struct Burst {
         bool used{};
@@ -193,6 +229,8 @@ class Engine {
 };
 bool parse_wifi(std::span<const uint8_t>, Observation &);
 bool parse_ble(std::span<const uint8_t>, Observation &);
+// Input includes the little-endian service UUID. Unsupported formats leave output untouched.
+bool parse_samsung_tag(std::span<const uint8_t>, SamsungTag &);
 bool matches(const Rule &, const Observation &);
 void sanitize(std::span<const uint8_t>, std::span<char>);
 const char *grade(uint8_t score);
@@ -238,6 +276,8 @@ bool hmac_sha256(std::span<const uint8_t> key, std::span<const uint8_t> input,
                  std::span<uint8_t, 32> output);
 bool sha256(std::span<const uint8_t> input, std::span<uint8_t, 32> output);
 bool private_token(std::span<const uint8_t> key, const Detection &, std::span<char, 21> output);
+// Legacy address identity, retained to honor existing saved ignores.
+uint64_t address_hash(std::span<const uint8_t> key, const Detection &);
 uint64_t meal_hash(std::span<const uint8_t> key, const Detection &);
 // Returns zero on insufficient space. No partial JSON record may be persisted.
 size_t write_record(const Detection &, std::string_view session, std::string_view token,

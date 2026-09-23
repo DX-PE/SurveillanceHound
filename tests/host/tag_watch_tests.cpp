@@ -257,8 +257,12 @@ int main() {
         ui.now += 1000;
         CHECK(ui.watch_warning());
         ui.open_tag_watch();
+        d.last_ms = ++ui.now;
+        ui.event(d); // A regular card can queue underneath the Watch review screen.
+        CHECK(ui.alert_until > ui.now);
         ui.tap(30, row_y + 3 * row_step + 10);
         CHECK(ui.companion.is_ignored(ui.identity(d)) && !ui.watch_warning());
+        CHECK(!ui.alert_until); // Ignoring Watch must also clear that ordinary card.
         ui.companion.ignored = {};
         ui.tag_watch.start(ui.now, false);
         qualify(ui, d);

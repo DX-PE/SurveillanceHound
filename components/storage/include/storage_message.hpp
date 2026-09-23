@@ -6,7 +6,17 @@
 #include <variant>
 
 namespace sniffer::storage::detail {
-enum class Op : uint8_t { Record, Save, Export, Eject, Diagnostics, Sound, Clear, Sleep };
+enum class Op : uint8_t {
+    Record,
+    Save,
+    Export,
+    Eject,
+    Diagnostics,
+    Sound,
+    Clear,
+    Sleep,
+    BackupIgnores
+};
 struct Record {
     Detection detection{};
     std::array<char, 21> token{};
@@ -46,6 +56,24 @@ class Snapshots {
     }
     void release(size_t slot) {
         slots_[slot].busy.store(false, std::memory_order_release);
+    }
+};
+// Reuse one of the two existing immutable slots while SD history is checked.
+// A newer successful NVS save replaces the deferred snapshot without growing RAM.
+struct DeferredBackup {
+    int slot{-1};
+    bool manual{};
+    void retain(Snapshots &snapshots, unsigned next, bool requested) {
+        if (slot >= 0)
+            snapshots.release(size_t(slot));
+        slot = int(next);
+        manual |= requested;
+    }
+    void release(Snapshots &snapshots) {
+        if (slot >= 0)
+            snapshots.release(size_t(slot));
+        slot = -1;
+        manual = false;
     }
 };
 } // namespace sniffer::storage::detail

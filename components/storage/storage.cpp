@@ -8,10 +8,12 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
-#include "nvs.h"
-#include "nvs_flash.h"
+#include "history_export.hpp"
+#include "history_recovery.hpp"
+#include "ignore_backup.hpp"
 #include "psa/crypto.h"
 #include "signatures_generated.h"
+#include "state_store.hpp"
 #include "storage_message.hpp"
 #include <algorithm>
 #include <array>
@@ -66,156 +68,21 @@ bool open_file() {
         ++health.errors;
         return false;
     }
-    setvbuf(file, nullptr, _IOFBF, 2048);
+    // A sector-sized stdio buffer is sufficient for the low-rate JSONL stream;
+    // FatFs also retains its sector cache. Keep the existing flush/fsync cadence.
+    setvbuf(file, nullptr, _IOFBF, 512);
     size = 0;
     return true;
 }
 void space_status() {
+    if (!health.mounted || health.ejected)
+        return; // An export queued after eject must not query the removed card.
     FATFS *fs{};
     DWORD free{};
     if (f_getfree("0:", &free, &fs) == FR_OK) {
         health.free_bytes = uint64_t(free) * fs->csize * 512;
         health.total_bytes = uint64_t(fs->n_fatent - 2) * fs->csize * 512;
     }
-}
-void recover_tails() {
-    DIR *dir = opendir("/sd/SURVSNIFF/LOGS");
-    if (!dir) {
-        health.read_only = true;
-        return;
-    }
-    unsigned files = 0;
-    while (auto *e = readdir(dir)) {
-        std::string_view name(e->d_name);
-        if (!name.ends_with(".JSONL") || name.find('/') != name.npos)
-            continue;
-        if (++files > 4096) {
-            health.read_only = true;
-            break;
-        }
-        char path[300];
-        std::snprintf(path, sizeof(path), "/sd/SURVSNIFF/LOGS/%s", e->d_name);
-        FILE *f = fopen(path, "rb");
-        if (!f) {
-            health.read_only = true;
-            break;
-        }
-        long good = 0;
-        bool corrupt = false, partial = false;
-        while (fgets(line, sizeof(line), f)) {
-            esp_task_wdt_reset();
-            size_t n = std::strlen(line);
-            if (!n || line[n - 1] != '\n') {
-                partial = feof(f);
-                corrupt = !partial;
-                break;
-            }
-            if (!valid_log_record({line, n})) {
-                corrupt = true;
-                break;
-            }
-            good = ftell(f);
-            vTaskDelay(1);
-        }
-        if (ferror(f))
-            corrupt = true;
-        fclose(f);
-        if (corrupt) {
-            health.read_only = true;
-            ++health.errors;
-            continue;
-        }
-        if (partial) {
-            f = fopen(path, "rb+");
-            if (!f || ftruncate(fileno(f), good) != 0 || fsync(fileno(f)) != 0) {
-                health.read_only = true;
-                ++health.errors;
-            }
-            if (f)
-                fclose(f);
-        }
-    }
-    closedir(dir);
-}
-uint32_t checksum(std::span<const uint8_t> bytes) {
-    uint32_t crc = ~0U;
-    for (auto b : bytes) {
-        crc ^= b;
-        for (int i = 0; i < 8; ++i)
-            crc = (crc >> 1) ^ (0xedb88320U & -(crc & 1U));
-    }
-    return ~crc;
-}
-struct ConfigRecord {
-    Settings settings;
-    board::Calibration calibration;
-    BatteryCalibration battery;
-};
-struct PetRecord {
-    Pet pet;
-    std::array<MealStamp, 32> recent;
-    std::array<uint8_t, 32> key;
-};
-// V3 has a smaller boot record. V4 requires companion data; V5 also requires appearance.
-struct BootRecordV3 {
-    uint32_t boots, reason;
-};
-struct BootRecord {
-    uint32_t boots, reason, version{5};
-};
-template <class T> struct Envelope {
-    uint32_t version{1}, generation{}, crc{};
-    T value{};
-};
-template <class T> bool write_part(const char *space, uint32_t gen, const T &data) {
-    Envelope<T> e{};
-    e.generation = gen;
-    e.value = data;
-    e.crc = checksum({reinterpret_cast<const uint8_t *>(&e.value), sizeof(T)});
-    nvs_handle_t h{};
-    if (nvs_open(space, NVS_READWRITE, &h) != ESP_OK)
-        return false;
-    bool ok = nvs_set_blob(h, gen % 2 ? "slot1" : "slot0", &e, sizeof(e)) == ESP_OK &&
-              nvs_commit(h) == ESP_OK;
-    nvs_close(h);
-    return ok;
-}
-template <class T> bool read_part(const char *space, uint32_t gen, T &data) {
-    Envelope<T> e{};
-    size_t size = sizeof(e);
-    nvs_handle_t h{};
-    if (nvs_open(space, NVS_READONLY, &h) != ESP_OK)
-        return false;
-    bool ok = nvs_get_blob(h, gen % 2 ? "slot1" : "slot0", &e, &size) == ESP_OK &&
-              size == sizeof(e) && e.version == 1 && e.generation == gen &&
-              e.crc == checksum({reinterpret_cast<const uint8_t *>(&e.value), sizeof(T)});
-    nvs_close(h);
-    if (ok)
-        std::memcpy(&data, &e.value, sizeof(data));
-    return ok;
-}
-uint32_t generation{};
-bool persist(const State &s) {
-    if (!valid_current(s))
-        return false;
-    uint32_t next = generation + 1;
-    if (!next)
-        return false;
-    ConfigRecord c{s.settings, s.calibration, s.battery};
-    PetRecord p{s.pet, s.recent, s.meal_key};
-    BootRecord b{s.boots, s.reset_reason};
-    if (!write_part("hound_settings", next, c) || !write_part("hound_pet", next, p) ||
-        !write_part("hound_system", next, b) || !write_part("hound_companion", next, s.companion) ||
-        !write_part("hound_look", next, s.appearance))
-        return false;
-    nvs_handle_t h{};
-    if (nvs_open("system", NVS_READWRITE, &h) != ESP_OK)
-        return false;
-    bool ok = nvs_set_u32(h, "generation", next) == ESP_OK && nvs_commit(h) == ESP_OK;
-    nvs_close(h);
-    if (ok)
-        generation = next;
-    return ok;
 }
 bool hash_file(const char *path, char output[65]) {
     FILE *input = fopen(path, "rb");
@@ -244,145 +111,141 @@ bool hash_file(const char *path, char output[65]) {
     return ok;
 }
 void export_rows() {
-    if (!health.mounted || health.ejected || health.read_only)
+    if (!health.mounted || health.ejected || health.read_only || health.failed)
         return;
     if (!flush())
         return;
     char dir[160];
     std::snprintf(dir, sizeof(dir), "/sd/SURVSNIFF/EXPORT/E-%08lx",
                   static_cast<unsigned long>(esp_random()));
-    if (mkdir(dir, 0755) != 0) {
-        ++health.errors;
-        return;
-    }
-    char path[220];
-    std::snprintf(path, sizeof(path), "%s/SIGHTINGS.JSONL", dir);
-    FILE *out = fopen(path, "wx");
-    bool ok = out;
-    uint32_t rows = 0;
     std::array<uint8_t, 32> export_key{};
     esp_fill_random(export_key.data(), export_key.size());
-    DIR *logs = opendir("/sd/SURVSNIFF/LOGS");
-    if (!logs)
-        ok = false;
-    char exported[2048];
-    unsigned files = 0;
-    if (logs)
-        while (ok) {
-            auto *e = readdir(logs);
-            if (!e)
-                break;
-            std::string_view name(e->d_name);
-            if (!name.ends_with(".JSONL") || name.find('/') != name.npos)
-                continue;
-            if (++files > 4096) {
-                ok = false;
-                break;
-            }
-            char source[300];
-            std::snprintf(source, sizeof(source), "/sd/SURVSNIFF/LOGS/%s", e->d_name);
-            FILE *input = fopen(source, "rb");
-            if (!input) {
-                ok = false;
-                break;
-            }
-            while (ok && fgets(line, sizeof(line), input)) {
-                esp_task_wdt_reset();
-                size_t len = std::strlen(line);
-                if (!len || line[len - 1] != '\n') {
-                    ok = false;
-                    break;
-                }
-                auto n = export_log_record({line, len}, export_key, exported);
-                ok = n && write_all(out, exported, n);
-                if (ok)
-                    ++rows;
-                vTaskDelay(1);
-            }
-            if (ferror(input))
-                ok = false;
-            fclose(input);
-        }
-    if (logs)
-        closedir(logs);
-    if (out) {
-        ok = (fflush(out) == 0) && ok;
-        ok = (fsync(fileno(out)) == 0) && ok;
-        ok = (fclose(out) == 0) && ok;
-    }
-    const char *names[] = {"SIGHTINGS.JSONL", "SUMMARY.JSON", "README.TXT"};
-    const char *readme =
-        "Surveillance Hound complete historical event export. Repeated updates are retained.\n"
-        "No location is collected; not map-ready. No raw MAC, SSID, payload, or drone serial.\n"
-        "Identifiers are rekeyed per export. Host export tool can aggregate events.\n"
-        "Radio clues may be spoofed. Confidence is evidence strength, not proof of surveillance.\n";
-    std::snprintf(path, sizeof(path), "%s/README.TXT", dir);
-    out = fopen(path, "wx");
-    ok = write_all(out, readme, std::strlen(readme)) && ok;
-    if (out)
-        ok = (fclose(out) == 0) && ok;
-    std::snprintf(path, sizeof(path), "%s/SUMMARY.JSON", dir);
-    out = fopen(path, "wx");
-    int n = std::snprintf(
-        line, sizeof(line),
-        "{\"schema_version\":1,\"scope\":\"full_history_events\",\"file_limit\":4096,\"rows\":%lu,"
-        "\"firmware_version\":\"%s\",\"hardware\":\"E32R40T\",\"signature_pack\":\"%s\"}\n",
-        static_cast<unsigned long>(rows), firmware_version, signature_pack_version);
-    ok = write_all(out, line, n) && ok;
-    if (out)
-        ok = (fclose(out) == 0) && ok;
-    std::snprintf(path, sizeof(path), "%s/MANIFEST.SHA256", dir);
-    FILE *manifest = ok ? fopen(path, "wx") : nullptr;
-    ok = bool(manifest) && ok;
-    for (auto name : names) {
-        std::snprintf(path, sizeof(path), "%s/%s", dir, name);
-        char digest[65]{};
-        if (!hash_file(path, digest)) {
-            ok = false;
-            break;
-        }
-        if (manifest && std::fprintf(manifest, "%s  %s\n", digest, name) < 0)
-            ok = false;
-    }
-    if (manifest)
-        ok = (fclose(manifest) == 0) && ok;
+    uint32_t rows = 0;
+    bool ok = detail::export_history_files(file, filename, "/sd/SURVSNIFF/LOGS", dir, export_key,
+                                           line, rows, hash_file, [] {
+                                               esp_task_wdt_reset();
+                                               vTaskDelay(1);
+                                           });
     if (ok) {
-        ++health.exports;
         health.export_rows = rows;
+        ++health.exports; // Publish completion only after its row count is available.
     } else {
-        std::snprintf(path, sizeof(path), "%s/MANIFEST.SHA256", dir);
-        unlink(path); // Incomplete exports must never carry a completion manifest.
         ++health.errors;
         health.failed = true;
     }
 }
+// Only the storage worker touches this cache or the card. No extra copy of the list.
+std::array<uint8_t, 32> backed_up_digest{};
+bool has_ignore_backup{};
+void backup_ignores(const State &state, bool force = false) {
+    if (!health.mounted) {
+        health.ignore_backup = IgnoreBackupStatus::NoCard;
+        return;
+    }
+    if (health.ejected) {
+        health.ignore_backup = IgnoreBackupStatus::Ejected;
+        return;
+    }
+    if (health.read_only) {
+        health.ignore_backup = IgnoreBackupStatus::ReadOnly;
+        return;
+    }
+    if (health.failed) {
+        health.ignore_backup = IgnoreBackupStatus::Failed;
+        return;
+    }
+    const auto &list = state.companion.ignored;
+    std::array<uint8_t, 32> digest{};
+    if (!sha256({reinterpret_cast<const uint8_t *>(list.data()), sizeof(list)}, digest)) {
+        health.ignore_backup = IgnoreBackupStatus::Failed;
+        return;
+    }
+    if (!force && has_ignore_backup && health.ignore_backup == IgnoreBackupStatus::Saved &&
+        digest == backed_up_digest) {
+        health.ignore_backup = IgnoreBackupStatus::Saved;
+        return;
+    }
+    std::array<char, 17> id{};
+    if (!detail::ignore_backup_id(state.meal_key, id)) {
+        health.ignore_backup = IgnoreBackupStatus::Failed;
+        return;
+    }
+    char base[80];
+    std::snprintf(base, sizeof(base), "/sd/SURVSNIFF/IGNORES/%s", id.data());
+    const auto result = detail::backup_ignores(base, state.meal_key, list);
+    if (result == detail::BackupResult::Failed) {
+        health.ignore_backup = IgnoreBackupStatus::Failed;
+        return; // Internal saves and observation logging can continue.
+    }
+    backed_up_digest = digest;
+    has_ignore_backup = true;
+    health.ignore_backup_count = state.companion.ignored_count();
+    health.ignore_backup = IgnoreBackupStatus::Saved;
+}
 void task(void *) {
     esp_task_wdt_add(nullptr);
+    detail::HistoryRecovery recovery;
+    detail::DeferredBackup deferred;
     health.mounted = board::mount_sd();
     if (health.mounted) {
         bool dirs = mkdir_ok("/sd/SURVSNIFF") && mkdir_ok("/sd/SURVSNIFF/LOGS") &&
-                    mkdir_ok("/sd/SURVSNIFF/EXPORT") && mkdir_ok("/sd/SURVSNIFF/CRASH");
+                    mkdir_ok("/sd/SURVSNIFF/EXPORT") && mkdir_ok("/sd/SURVSNIFF/CRASH") &&
+                    mkdir_ok("/sd/SURVSNIFF/IGNORES");
         if (dirs) {
-            recover_tails();
-            if (!health.failed && !health.read_only)
-                open_file();
-            space_status();
+            recovery.begin("/sd/SURVSNIFF/LOGS");
         } else
             health.failed = true;
     }
+    bool initialized = false;
+    uint32_t recovery_errors = 0;
+    auto finish_backup = [&](const State &state, bool manual) {
+        backup_ignores(state, manual);
+        if (manual)
+            ++health.manual_backups;
+    };
     for (;;) {
         esp_task_wdt_reset();
+        if (recovery.active())
+            recovery.step(line);
+        health.checked_rows = recovery.rows();
+        health.checked_files = recovery.files();
+        health.read_only = recovery.read_only();
+        health.errors += recovery.errors() - recovery_errors;
+        recovery_errors = recovery.errors();
+        if (!initialized && !recovery.active()) {
+            initialized = true;
+            health.checking = false;
+            if (health.mounted && !health.failed && !health.read_only && !health.ejected)
+                open_file();
+            if (deferred.slot >= 0) {
+                finish_backup(snapshots.get(size_t(deferred.slot)), deferred.manual);
+                deferred.release(snapshots);
+            }
+        }
         health.stack_free = uxTaskGetStackHighWaterMark(nullptr);
         Message m{};
-        if (xQueueReceive(queue, &m, pdMS_TO_TICKS(100)) == pdTRUE) {
+        if (xQueueReceive(queue, &m, recovery.active() ? 0 : pdMS_TO_TICKS(100)) == pdTRUE) {
             switch (m.op) {
-            case Op::Save: {
-                bool ok = persist(snapshots.get(m.value));
-                snapshots.release(m.value);
-                if (!ok) {
+            case Op::Save:
+            case Op::BackupIgnores: {
+                const auto &state = snapshots.get(m.value);
+                bool ok = detail::persist(state);
+                if (ok) {
+                    ++health.saves;
+                    if (recovery.active()) {
+                        deferred.retain(snapshots, m.value, m.op == Op::BackupIgnores);
+                        health.ignore_backup = IgnoreBackupStatus::Checking;
+                    } else
+                        finish_backup(state, m.op == Op::BackupIgnores);
+                } else {
                     ++health.save_errors;
+                    health.ignore_backup = IgnoreBackupStatus::InternalError;
                     health.failed = true;
+                    if (m.op == Op::BackupIgnores)
+                        ++health.manual_backups;
                 }
+                if (!ok || !recovery.active())
+                    snapshots.release(m.value);
                 break;
             }
             case Op::Record: {
@@ -424,6 +287,8 @@ void task(void *) {
                 space_status();
                 break;
             case Op::Clear: {
+                if (recovery.active())
+                    break;
                 if (!health.mounted || health.ejected || health.read_only)
                     break;
                 flush();
@@ -460,7 +325,14 @@ void task(void *) {
                 break;
             }
             case Op::Sleep: {
-                bool ok = persist(snapshots.get(m.value));
+                const bool was_checking = recovery.active();
+                bool closed = recovery.cancel();
+                initialized = true;
+                health.checking = false;
+                deferred.release(snapshots);
+                bool ok = detail::persist(snapshots.get(m.value)) && closed;
+                if (ok && !was_checking)
+                    backup_ignores(snapshots.get(m.value));
                 snapshots.release(m.value);
                 if (ok && flush()) {
                     if (file) {
@@ -472,16 +344,32 @@ void task(void *) {
                     health.sleep_failed = true;
                 break;
             }
-            case Op::Eject:
-                flush();
-                if (file) {
-                    fclose(file);
-                    file = nullptr;
+            case Op::Eject: {
+                // Serialize behind exports/records and stop all future card I/O even
+                // on failure. Never turn a failed close into success on a second tap.
+                if (health.ejected)
+                    break;
+                // Close the startup reader as well, before publishing SAFE TO REMOVE.
+                bool ok = recovery.cancel();
+                ok = detail::close_log(file) && ok;
+                initialized = true;
+                health.checking = false;
+                const bool cancelled_backup = deferred.manual;
+                deferred.release(snapshots);
+                pending = 0;
+                if (!ok) {
+                    health.failed = true;
+                    ++health.errors;
                 }
-                health.ejected = true;
+                health.eject_failed = !ok;
+                health.ignore_backup = IgnoreBackupStatus::Ejected;
+                health.ejected = true; // Publish only after the result and closed writer.
+                if (cancelled_backup)
+                    ++health.manual_backups;
                 break;
+            }
             case Op::Diagnostics:
-                if (health.mounted && !health.ejected && !health.read_only) {
+                if (!recovery.active() && health.mounted && !health.ejected && !health.read_only) {
                     FILE *f = fopen("/sd/SURVSNIFF/CRASH/LAST-RESET.JSON", "w");
                     if (f) {
                         const auto &text = std::get<std::array<char, 256>>(m.payload);
@@ -493,6 +381,8 @@ void task(void *) {
                 break;
             }
         }
+        if (recovery.active())
+            vTaskDelay(1); // Yield per batch, not once per historical row.
         if (pending && uint64_t(esp_timer_get_time() / 1000) - last_flush >= 5000) {
             flush();
             space_status();
@@ -521,102 +411,24 @@ bool send_snapshot(Op op, const State &state) {
     return false;
 }
 } // namespace
-bool load(State &state) {
-    auto rc = nvs_flash_init();
-    if (rc != ESP_OK)
-        return false; // Never erase NVS automatically.
-    nvs_handle_t handle{};
-    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK)
-        return false;
-    State loaded{};
-    rc = nvs_get_u32(handle, "generation", &generation);
-    if (rc == ESP_OK) {
-        nvs_close(handle);
-        ConfigRecord c{};
-        PetRecord p{};
-        BootRecord b{};
-        if (!read_part("hound_settings", generation, c) || !read_part("hound_pet", generation, p))
-            return false;
-        if (read_part("hound_system", generation, b)) {
-            if ((b.version != 4 && b.version != 5) ||
-                !read_part("hound_companion", generation, loaded.companion))
-                return false;
-            if (b.version == 5 && !read_part("hound_look", generation, loaded.appearance)) {
-                AppearanceV1 legacy{};
-                if (!read_part("hound_look", generation, legacy) ||
-                    !migrate_appearance(legacy, loaded.appearance))
-                    return false;
-            }
-        } else {
-            BootRecordV3 legacy{};
-            if (!read_part("hound_system", generation, legacy))
-                return false;
-            b.boots = legacy.boots;
-            b.reason = legacy.reason;
-            loaded.companion.unlock(p.pet.xp);
-        }
-        loaded.settings = c.settings;
-        loaded.calibration = c.calibration;
-        loaded.battery = c.battery;
-        loaded.pet = p.pet;
-        loaded.recent = p.recent;
-        loaded.meal_key = p.key;
-        loaded.boots = b.boots;
-        loaded.reset_reason = b.reason;
-        if (!valid_current(loaded))
-            return false;
-        state = loaded;
-        state.pet.decay_ms = 0;
-        ++state.boots;
-        state.reset_reason = esp_reset_reason();
-        return persist(state);
-    }
-    if (rc != ESP_ERR_NVS_NOT_FOUND) {
-        nvs_close(handle);
-        return false;
-    }
-    StateV2 old{};
-    size_t n = sizeof(old);
-    rc = nvs_get_blob(handle, "state_v2", &old, &n);
-    if (rc == ESP_OK) {
-        if (n != sizeof(old) || !migrate(old, loaded)) {
-            nvs_close(handle);
-            return false;
-        }
-        n = sizeof(loaded);
-    }
-    if (rc == ESP_ERR_NVS_NOT_FOUND) {
-        StateV1 legacy{};
-        size_t old_size = sizeof(legacy);
-        rc = nvs_get_blob(handle, "state_v1", &legacy, &old_size);
-        if (rc == ESP_OK) {
-            if (old_size != sizeof(legacy) || !migrate(legacy, loaded)) {
-                nvs_close(handle);
-                return false;
-            }
-            n = sizeof(loaded);
-        }
-    }
-    nvs_close(handle);
-    if (rc == ESP_OK && n == sizeof(loaded) && valid_current(loaded)) {
-        state = loaded;
-        state.pet.decay_ms = 0;
-
-    } else if (rc == ESP_ERR_NVS_NOT_FOUND) {
-        esp_fill_random(state.meal_key.data(), state.meal_key.size());
-    } else
-        return false;
-    ++state.boots;
-    state.reset_reason = esp_reset_reason();
-    return persist(state);
-}
 bool start(const char *session) {
     std::snprintf(session_id, sizeof(session_id), "%s", session);
     queue = xQueueCreateStatic(8, sizeof(Message), memory, &control);
-    return queue &&
-           xTaskCreatePinnedToCore(task, "storage", 10240, nullptr, 2, nullptr, 1) == pdPASS;
+    health.checking = true;
+    health.ignore_backup = IgnoreBackupStatus::Checking;
+    if (queue && xTaskCreatePinnedToCore(task, "storage", 10240, nullptr, 2, nullptr, 1) == pdPASS)
+        return true;
+    queue = nullptr;
+    health.checking = false;
+    health.failed = true;
+    health.ignore_backup = IgnoreBackupStatus::Unavailable;
+    return false;
 }
 bool append(const Detection &d, const char *token, bool research, uint8_t region) {
+    if (health.checking) {
+        ++health.dropped; // Startup sightings cannot displace Save/Eject requests.
+        return false;
+    }
     Message m{};
     m.op = Op::Record;
     auto &record = m.payload.emplace<Record>();
@@ -626,15 +438,19 @@ bool append(const Detection &d, const char *token, bool research, uint8_t region
     std::snprintf(record.token.data(), record.token.size(), "%s", token);
     return send(m);
 }
-bool save(const State &state) {
-    return send_snapshot(Op::Save, state);
+bool save(const State &state, bool backup) {
+    return send_snapshot(backup ? Op::BackupIgnores : Op::Save, state);
 }
 bool export_history() {
+    if (health.checking)
+        return false;
     Message m{};
     m.op = Op::Export;
     return send(m);
 }
 bool clear_logs() {
+    if (health.checking)
+        return false;
     Message m{};
     m.op = Op::Clear;
     return send(m);

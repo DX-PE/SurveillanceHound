@@ -117,6 +117,8 @@ def serve(executable, port):
                     "inject",
                     "signal",
                     "tag_watch_test",
+                    "pet_care",
+                    "idle_test",
                     "boot",
                     "reset",
                     "onboard",

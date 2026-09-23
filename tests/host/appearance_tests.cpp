@@ -19,12 +19,13 @@ int main() {
     saved.meal_key[0] = 1;
     CHECK(storage::valid_current(saved));
     for (auto member : {&Appearance::theme, &Appearance::scene, &Appearance::speech,
-                        &Appearance::compact, &Appearance::inverted}) {
+                        &Appearance::compact, &Appearance::inverted, &Appearance::dim_minutes,
+                        &Appearance::saver_minutes, &Appearance::off_minutes}) {
         auto invalid = saved;
         invalid.appearance.*member = 255;
         CHECK(!storage::valid_current(invalid));
     }
-    saved.appearance.version = 3;
+    saved.appearance.version = 4;
     CHECK(!storage::valid_current(saved));
     storage::StateV2 legacy;
     legacy.meal_key[0] = 2;
@@ -40,7 +41,7 @@ int main() {
     Appearance upgraded;
     upgraded.inverted = 1;
     CHECK(migrate_appearance(old_look, upgraded));
-    CHECK(upgraded.version == 2 && upgraded.theme == 2 && upgraded.scene == 1 &&
+    CHECK(upgraded.version == 3 && upgraded.theme == 2 && upgraded.scene == 1 &&
           upgraded.speech == 0 && upgraded.compact == 1 && !upgraded.inverted);
     old_look.scene = 255;
     CHECK(!migrate_appearance(old_look, upgraded) && upgraded.scene == 1);

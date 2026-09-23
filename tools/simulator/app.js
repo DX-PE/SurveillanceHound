@@ -39,7 +39,7 @@ async function display(response) {
   document.querySelector('#mood').textContent = state.mood;
   document.querySelector('#fullness').textContent = state.fullness;
   document.querySelector('#events').textContent = state.events;
-  document.querySelector('#state').textContent = `Device screen: ${state.screen} · ${state.paused ? "Sleeping" : "Sniffing"} · Demo XP: ${state.preview_xp} · Scents: ${state.discoveries}/19${state.snoozed ? " · Alerts snoozed" : ""}`;
+  document.querySelector('#state').textContent = `Device screen: ${state.screen} · Display: ${["awake", "dimmed", "bouncing hound", "off"][state.display_mode]} · ${state.paused ? "Sleeping" : "Sniffing"} · Demo XP: ${state.preview_xp} · Scents: ${state.discoveries}/19${state.snoozed ? " · Alerts snoozed" : ""}`;
   document.querySelector('#connection').textContent = 'LOCAL SIMULATOR RUNNING';
 }
 function fail(error) {
@@ -55,7 +55,7 @@ function request(action) {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(action)
     }) : await fetch('/api/frame');
     await display(response);
-    if (['inject', 'tag_watch_test'].includes(action?.action)) {
+    if (['inject', 'tag_watch_test', 'pet_care', 'idle_test'].includes(action?.action)) {
       focusDisplay();
     }
   }).catch(fail);

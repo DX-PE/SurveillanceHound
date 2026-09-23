@@ -34,7 +34,9 @@ enum class Screen {
     Appearance,
     Display,
     TagWatch,
-    WatchProgress
+    WatchProgress,
+    IdleDisplay,
+    IgnoreBackup
 };
 enum Request : uint32_t {
     Save = 1,
@@ -49,9 +51,23 @@ enum Request : uint32_t {
     Pause = 512,
     ClearLogs = 1024,
     Sleep = 2048,
-    Invert = 4096
+    Invert = 4096,
+    BackupIgnores = 8192
 };
+enum class DisplayMode : uint8_t { Active, Dim, Saver, Off };
 enum class SnackPhase { None, Turn, Approach, Chew, Happy };
+enum class ExportStatus : uint8_t {
+    Idle,
+    Checking,
+    Exporting,
+    Complete,
+    NoCard,
+    ReadOnly,
+    Failed,
+    QueueFull,
+    Demo
+};
+enum class EjectStatus : uint8_t { Idle, Ejecting, Safe, Failed, QueueFull, NoCard, Demo };
 struct SnackPose {
     SnackPhase phase{SnackPhase::None};
     int frame{}, approach{}, bites{};
@@ -68,7 +84,26 @@ class View {
     uint32_t preview_xp{};
     uint8_t unlocked_outfit{};
     int book_page{}, scent_index{}, scent_page{}, wardrobe_index{}, ignored_page{};
+    IgnoreBackupStatus ignore_backup{IgnoreBackupStatus::Waiting};
+    uint32_t ignore_backup_count{}, manual_backup_count{}, sd_checked_rows{}, sd_checked_files{};
+    bool backup_pending{}, sd_checking{};
+    void backup_queued(bool accepted);
+    void backup_progress(uint32_t completed);
+    unsigned ignored_pages() const {
+        return std::max(1U, (collection().ignored_count() + 3) / 4);
+    }
+    size_t ignored_slot(unsigned ordinal) const {
+        const auto &list = collection().ignored;
+        for (size_t i = 0; i < list.size(); ++i)
+            if (list[i].hash() && ordinal-- == 0)
+                return i;
+        return list.size();
+    }
+    const char *ignore_backup_message() const;
+    // Reuse the action snapshot to retain the last drawn Home card until touch.
     Detection action_detection{};
+    uint64_t displayed_identity{};
+    bool frame_presented{}, home_alert_shown{}, displayed_ignored{};
     Companion &collection() {
         return demo ? preview_companion : companion;
     }
@@ -79,6 +114,7 @@ class View {
         return demo ? preview_snooze_until : snooze_until;
     }
     uint64_t identity(const Detection &) const;
+    bool is_ignored(const Detection &) const;
     bool alert_allowed(const Detection &) const;
     void reset_progress();
     void open_actions(const Detection &d);
@@ -89,7 +125,46 @@ class View {
     const sniffer::Appearance &look() const {
         return demo ? preview_appearance : appearance;
     }
+    // Display idling is independent of radio pause, pet care and Travel Watch.
+    DisplayMode display_mode{DisplayMode::Active};
+    uint64_t last_activity{}, saver_since{}, alert_wake_until{};
+    bool saver_preview{};
+    void update_display();
+    bool wake_display(bool alert = false);
+    void wake_for_alert();
+    void preview_saver();
+    unsigned display_brightness() const;
+    display::Point saver_position() const;
     uint32_t pets{};
+    uint8_t preview_fullness{70}, preview_mood{70};
+    uint64_t preview_decay_ms{}, celebration_until{};
+    uint8_t fullness() const {
+        return demo ? preview_fullness : pet.fullness;
+    }
+    uint8_t mood() const {
+        return demo ? preview_mood : pet.mood;
+    }
+    bool needs_care() const {
+        return fullness() <= Pet::low_needs || mood() <= Pet::low_needs;
+    }
+    void tick_pet() {
+        if (demo)
+            Pet::decay_needs(now, preview_decay_ms, preview_fullness, preview_mood);
+        else
+            pet.tick(now);
+    }
+    bool celebrating() const {
+        return !paused && now < celebration_until &&
+               (now >= meal_until || snack_pose().phase == SnackPhase::Happy);
+    }
+    int celebration_jump() const {
+        if (!celebrating() || settings.reduced_animation)
+            return 0;
+        // Three gentle hops, bounded to the dog stage in both orientations.
+        const auto start = celebration_until - 3800;
+        const auto phase = (now - start) % 900;
+        return phase < 600 ? int((phase < 300 ? phase : 600 - phase) * 14 / 300) : 0;
+    }
     bool speaking() const {
         return look().speech && (happy_until > now ||
                                  (look().speech == 2 ? now % 12000 < 8000 : now % 24000 < 5000));
@@ -210,8 +285,19 @@ class View {
     size_t recent_count{};
     std::array<uint32_t, 3> counts{};
     std::array<char, 64> notice{};
+    ExportStatus export_status{ExportStatus::Idle};
+    uint32_t exported_rows{}, save_count{}, save_errors{};
+    EjectStatus eject_status{EjectStatus::Idle};
+    void request_eject();
+    void eject_queued(bool accepted);
+    void eject_progress(bool stopped, bool failed);
+    const char *eject_message() const;
+    void request_export();
+    void export_queued(bool accepted);
+    void export_progress(uint32_t completed, uint32_t rows);
+    void export_message(std::span<char> output) const;
     uint32_t largest_heap{};
-    bool low_heap{};
+    bool low_heap{}, save_pending{};
     void memory_status(uint32_t free, uint32_t minimum, uint32_t largest) {
         heap = free;
         min_heap = minimum;
@@ -219,7 +305,10 @@ class View {
         low_heap = free < 80000;
     }
     const char *home_notice() const {
-        return notice[0] ? notice.data() : low_heap ? "LOW HEAP - SEE DIAGNOSTICS" : "";
+        return notice[0]      ? notice.data()
+               : save_pending ? "SAVE WAITING / RETRYING"
+               : low_heap     ? "LOW HEAP - SEE DIAGNOSTICS"
+                              : "";
     }
     int width() const {
         return display::width(settings.portrait);

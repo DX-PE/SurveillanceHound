@@ -11,6 +11,7 @@
 #include "radio.hpp"
 #include "signatures_generated.h"
 #include "sniffer/core.hpp"
+#include "sniffer/save_retry.hpp"
 #include "storage.hpp"
 #include "ui.hpp"
 #include <array>
@@ -27,7 +28,8 @@ DMA_ATTR static uint16_t tile[ui::View::max_tile_pixels];
 static bool radio_started{}, calibrating{}, was_touch{}, was_button{};
 static board::Point raw_points[3];
 
-static uint64_t last_save{}, button_at{}, demo_at{}, last_touch{}, last_diag{};
+static uint64_t button_at{}, demo_at{}, last_touch{}, last_diag{};
+static SaveRetry saves;
 static Pet real_pet;
 static const Rule demo_flipper{"demo.flipper",
                                Category::FLIPPER,
@@ -47,16 +49,20 @@ static const Rule demo_pineapple{"demo.pineapple",
                                  false,
                                  "Synthetic Pineapple",
                                  "DEMO: synthetic evidence only"};
-void save() {
+void save(bool backup = false) {
     if (view.demo)
         return;
     state.recent = meals.snapshot(view.now);
     state.battery = view.battery_cal;
     state.companion = view.companion;
     state.appearance = view.appearance;
-    if (!storage::save(state))
-        std::snprintf(view.notice.data(), view.notice.size(), "SAVE QUEUE FULL");
-    last_save = view.now;
+    saves.backup_requested |= backup;
+    const bool requested_backup = saves.backup_requested;
+    const bool accepted = storage::save(state, requested_backup);
+    saves.result(view.now, accepted);
+    if (requested_backup)
+        view.backup_queued(accepted);
+    view.save_pending = saves.pending;
 }
 void begin_radio() {
     if (view.demo || view.paused)
@@ -80,12 +86,14 @@ void diagnostics() {
 }
 void app_task(void *) {
     esp_task_wdt_add(nullptr);
+    unsigned brightness = state.settings.brightness;
+    bool display_on = true, button_woke = false;
     for (;;) {
         esp_task_wdt_reset();
         view.now = esp_timer_get_time() / 1000;
         view.update_tag_watch();
-        if (!view.demo)
-            state.pet.tick(view.now);
+        view.update_display();
+        view.tick_pet();
         radio::Raw raw{};
         // Bounded work per UI frame prevents a radio flood from starving touch/rendering.
         for (int budget = 0; budget < 16 && radio::receive(raw); ++budget) {
@@ -182,11 +190,17 @@ void app_task(void *) {
                 view.screen = ui::Screen::Calibration;
             }
         }
+        if (pressed && was_touch && !view.saver_preview)
+            view.wake_display(); // A held touch is activity, without repeating its action.
         was_touch = pressed;
         bool button = board::button();
-        if (button && !was_button)
+        if (button && !was_button) {
             button_at = view.now;
-        if (!button && was_button) {
+            button_woke = view.wake_display();
+        }
+        if (button)
+            view.wake_display();
+        if (!button && was_button && !button_woke) {
             if (view.now - button_at >= 1000) {
                 state.settings.sound = false;
                 save();
@@ -226,17 +240,17 @@ void app_task(void *) {
             begin_radio();
         if (request & ui::Save) {
             save();
-            board::brightness(state.settings.brightness);
             radio::metrics.region = state.settings.region;
         }
+        if (request & ui::BackupIgnores)
+            save(true);
         if (request & ui::Export) {
-            if (!view.demo && storage::export_history())
-                std::snprintf(view.notice.data(), view.notice.size(), "HISTORY EXPORT QUEUED");
+            view.export_queued(!view.demo && storage::export_history());
         }
         if (request & ui::Eject) {
             if (!view.demo) {
                 save();
-                storage::eject();
+                view.eject_queued(storage::eject());
             }
         }
         if (request & ui::DiagnosticCopy)
@@ -250,9 +264,12 @@ void app_task(void *) {
             view.follow = {};
             if (view.demo) {
                 real_pet = state.pet;
+                view.preview_fullness = view.preview_mood = 70;
+                view.preview_decay_ms = view.now;
                 radio::pause(true);
             } else {
                 state.pet = real_pet;
+                state.pet.decay_ms = view.now;
                 begin_radio();
             }
             view.recent_count = 0;
@@ -283,7 +300,7 @@ void app_task(void *) {
             view.event(d);
             demo_at = view.now;
         }
-        if (view.now - last_save >= 60000)
+        if (!view.demo && saves.due(view.now))
             save();
         constexpr uint32_t heap_caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
         view.memory_status(heap_caps_get_free_size(heap_caps),
@@ -296,18 +313,30 @@ void app_task(void *) {
         view.ble = radio::metrics.ble_window;
         view.channel = radio::metrics.channel;
         view.scanning = radio::metrics.ready && !radio::metrics.paused;
-        view.sd = storage::health.mounted && !storage::health.ejected;
+        const bool ejected = storage::health.ejected;
+        view.sd = storage::health.mounted && !ejected;
+        view.eject_progress(ejected, storage::health.eject_failed);
         view.sd_error = storage::health.failed;
+        const auto backup_completions = storage::health.manual_backups.load();
+        view.ignore_backup = storage::health.ignore_backup;
+        view.ignore_backup_count = storage::health.ignore_backup_count;
+        view.backup_progress(backup_completions);
+        view.sd_checking = storage::health.checking;
+        view.sd_checked_rows = storage::health.checked_rows;
+        view.sd_checked_files = storage::health.checked_files;
         view.writes = storage::health.writes;
+        view.save_count = storage::health.saves;
+        view.save_errors = storage::health.save_errors;
         view.boot_reason = state.reset_reason;
         view.stack_free = uxTaskGetStackHighWaterMark(nullptr);
-        view.export_count = storage::health.exports;
+        view.sd_read_only = storage::health.read_only;
+        const auto exports = storage::health.exports.load();
+        view.export_progress(exports, storage::health.export_rows);
         view.storage_stack = storage::health.stack_free;
         view.radio_stack = radio::metrics.stack_free;
         view.ble_stack = radio::metrics.ble_stack;
         view.oversized = radio::metrics.oversized;
         view.radio_errors = radio::metrics.errors;
-        view.sd_read_only = storage::health.read_only;
         view.sd_free = storage::health.free_bytes;
         view.sd_total = storage::health.total_bytes;
         if (view.sd_read_only)
@@ -399,11 +428,29 @@ void app_task(void *) {
                    (alert && view.alert_detection.score < 80 && pulse) ||
                        view.meal_until > view.now,
                    !alert && view.scanning && (view.now / 1000) % 2 == 0);
-        for (int y = 0; y < view.height(); y += view.tile_rows()) {
-            view.render(y, std::span(tile).first(view.width() * view.tile_rows()));
-            board::blit(y, view.tile_rows(),
-                        std::span(tile).first(view.width() * view.tile_rows()));
+        view.update_display();
+        const bool wanted_on = view.display_mode != ui::DisplayMode::Off;
+        if (!wanted_on && display_on) {
+            board::brightness(0);
+            brightness = 0;
+            board::display_power(false);
         }
+        if (wanted_on) {
+            // Replace old display RAM before lighting a waking screen.
+            for (int y = 0; y < view.height(); y += view.tile_rows()) {
+                view.render(y, std::span(tile).first(view.width() * view.tile_rows()));
+                board::blit(y, view.tile_rows(),
+                            std::span(tile).first(view.width() * view.tile_rows()));
+            }
+            if (!display_on)
+                board::display_power(true);
+            const auto wanted_brightness = view.display_brightness();
+            if (wanted_brightness != brightness) {
+                board::brightness(wanted_brightness);
+                brightness = wanted_brightness;
+            }
+        }
+        display_on = wanted_on;
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
@@ -449,7 +496,12 @@ extern "C" void app_main() {
     bootloader_random_disable();
     meals.restore(state.recent);
     board::brightness(state.settings.brightness);
-    storage::start(session);
+    if (!storage::start(session))
+        std::snprintf(view.notice.data(), view.notice.size(), "STORAGE TASK FAILED / RESTART");
+#ifndef CONFIG_SNIFFER_DEMO
+    // Initial backup after mounting, including an unchanged list retained across reboot.
+    save();
+#endif
     view.screen = state.settings.onboarded ? ui::Screen::Home : ui::Screen::Welcome;
     if (!state.calibration.valid) {
         calibrating = true;
@@ -462,5 +514,7 @@ extern "C" void app_main() {
 #endif
     if (state.settings.onboarded && !calibrating)
         begin_radio();
+    view.now = esp_timer_get_time() / 1000;
+    view.wake_display();
     xTaskCreatePinnedToCore(app_task, "pet_ui_detect", 8192, nullptr, 4, nullptr, 1);
 }

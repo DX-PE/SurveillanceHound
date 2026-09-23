@@ -144,7 +144,7 @@ class Canvas {
         for (size_t i = f.offset; i < f.offset + f.length; i += 2) {
             uint8_t run = assets::pixels[i], index = assets::pixels[i + 1];
             for (unsigned j = 0; j < run; ++j, ++at)
-                if (index) {
+                if (index && (index != 7 || theme != 2 || red_warning)) {
                     auto color = assets::palettes[std::clamp(character, 0, 5)][index];
                     int px = at % 64, py = at / 64;
                     bool side = frame >= assets::side_walk;
@@ -168,6 +168,8 @@ class Canvas {
         int bob = (frame < 17 || frame >= 22) && frame % 2 ? 1 : 0;
         int face = side ? (frame >= assets::side_eat ? 31 : 28 - (frame - assets::side_walk) % 2)
                         : 27 - bob + (frame >= 8 && frame <= 10 ? 3 : 0);
+        if (frame == 20 || frame == 21)
+            face += 2 + frame - 20;
         auto part = [&](int dx, int dy, int w, int h, uint16_t color) {
             rect(x + dx * scale, y + dy * scale, w * scale, h * scale, color);
         };
@@ -399,20 +401,248 @@ const char *titles[] = {
     "RESET PROGRESS", "ALERT TYPES",        "SET UTC TIME",      "BATTERY SETUP",
     "CLEAR LOGS",     "SELF TEST",          "SCENT BOOK",        "SCENT CARD",
     "WARDROBE",       "QUIET ALERTS",       "IGNORED SCENTS",    "FOLLOW SCENT",
-    "ATMOSPHERE",     "DISPLAY OPTIONS",    "TAG WATCH",         "WATCH PROGRESS"};
+    "ATMOSPHERE",     "DISPLAY OPTIONS",    "TAG WATCH",         "WATCH PROGRESS",
+    "SCREEN SAVER",   "IGNORE BACKUP"};
 } // namespace
+const char *View::ignore_backup_message() const {
+    if (demo)
+        return "DEMO / NO SD WRITES";
+    switch (ignore_backup) {
+    case IgnoreBackupStatus::Checking:
+        return "CHECKING SD / BACKUP WILL FOLLOW";
+    case IgnoreBackupStatus::Unavailable:
+        return "STORAGE TASK FAILED / RESTART";
+    case IgnoreBackupStatus::Saved:
+        return "SD BACKUP SAVED";
+    case IgnoreBackupStatus::NoCard:
+        return "NO SD CARD / INTERNAL SAVE KEPT";
+    case IgnoreBackupStatus::Ejected:
+        return "SD EJECTED / INTERNAL SAVE KEPT";
+    case IgnoreBackupStatus::ReadOnly:
+        return "SD READ ONLY / INTERNAL SAVE KEPT";
+    case IgnoreBackupStatus::Failed:
+        return "SD BACKUP FAILED / INTERNAL SAVE KEPT";
+    case IgnoreBackupStatus::InternalError:
+        return "INTERNAL SAVE FAILED / RETRY NEEDED";
+    default:
+        return "WAITING FOR BACKUP";
+    }
+}
+void View::backup_queued(bool accepted) {
+    std::snprintf(notice.data(), notice.size(),
+                  accepted ? "BACKUP QUEUED" : "BACKUP PENDING / AUTO RETRY");
+}
+void View::backup_progress(uint32_t completed) {
+    if (backup_pending && completed != manual_backup_count) {
+        backup_pending = false;
+        std::snprintf(notice.data(), notice.size(), "%s", ignore_backup_message());
+    }
+    manual_backup_count = completed;
+}
+bool View::wake_display(bool alert) {
+    const bool was_idle = display_mode != DisplayMode::Active;
+    if (alert && was_idle)
+        screen = Screen::Home;
+    last_activity = now;
+    alert_wake_until = 0;
+    saver_preview = false;
+    display_mode = DisplayMode::Active;
+    return was_idle;
+}
+void View::wake_for_alert() {
+    // A bounded five-second glance, at most once every thirty seconds. Ordinary
+    // sightings cannot renew it or move the user's idle deadline in a busy room.
+    if (alert_wake_until && (now < alert_wake_until || now - alert_wake_until < 25000))
+        return;
+    alert_wake_until = now + 5000;
+    if (display_mode != DisplayMode::Active)
+        screen = Screen::Home;
+    saver_preview = false;
+    display_mode = DisplayMode::Active;
+}
+void View::preview_saver() {
+    wake_display();
+    saver_since = now;
+    saver_preview = true;
+    display_mode = DisplayMode::Saver;
+}
+void View::update_display() {
+    if (now < last_activity)
+        wake_display();
+    // Following warnings remain visible. Ordinary alerts use a separate bounded
+    // wake window, leaving interaction-based idle deadlines untouched.
+    const bool alert = watch_warning();
+    if (!settings.onboarded || screen == Screen::Calibration || screen == Screen::SelfTest ||
+        alert || export_status == ExportStatus::Exporting ||
+        eject_status == EjectStatus::Ejecting) {
+        wake_display(alert);
+        return;
+    }
+    if (now < alert_wake_until && now < alert_until) {
+        display_mode = DisplayMode::Active;
+        return;
+    }
+    const auto idle = now - last_activity;
+    const auto &a = look();
+    auto due = [&](uint8_t minutes) { return minutes && idle >= uint64_t(minutes) * 60000; };
+    const auto next = saver_preview                            ? DisplayMode::Saver
+                      : due(a.off_minutes) && !tag_watch.armed ? DisplayMode::Off
+                      : due(a.saver_minutes)                   ? DisplayMode::Saver
+                      : due(a.dim_minutes)                     ? DisplayMode::Dim
+                                                               : DisplayMode::Active;
+    if (next == DisplayMode::Saver && display_mode != DisplayMode::Saver && !saver_preview)
+        saver_since = last_activity + uint64_t(a.saver_minutes) * 60000;
+    display_mode = next;
+}
+unsigned View::display_brightness() const {
+    return display_mode == DisplayMode::Off      ? 0
+           : display_mode == DisplayMode::Active ? settings.brightness
+                                                 : std::min<unsigned>(settings.brightness, 15);
+}
+display::Point View::saver_position() const {
+    uint64_t elapsed = now >= saver_since ? now - saver_since : 0;
+    // Reduced motion relocates the sprite occasionally rather than leaving a
+    // fixed image. Both modes use the same reflected DVD-style diagonal path.
+    if (settings.reduced_animation)
+        elapsed = elapsed / 15000 * 15000;
+    auto bounce = [](uint64_t distance, unsigned limit) {
+        const auto phase = unsigned(distance % (2 * limit));
+        return int(phase <= limit ? phase : 2 * limit - phase) + 8;
+    };
+    return {bounce(37 + elapsed / 40, width() - 144), bounce(23 + elapsed / 55, height() - 144)};
+}
+void View::request_eject() {
+    if (demo) {
+        eject_status = EjectStatus::Demo;
+        return;
+    }
+    if (eject_status == EjectStatus::Ejecting || eject_status == EjectStatus::Safe ||
+        eject_status == EjectStatus::Failed)
+        return;
+    if (!sd)
+        eject_status = EjectStatus::NoCard;
+    else {
+        eject_status = EjectStatus::Ejecting;
+        requests |= Eject;
+    }
+}
+void View::eject_queued(bool accepted) {
+    if (eject_status == EjectStatus::Ejecting && !accepted)
+        eject_status = EjectStatus::QueueFull;
+}
+void View::eject_progress(bool stopped, bool failed) {
+    if (!demo && stopped)
+        eject_status = failed ? EjectStatus::Failed : EjectStatus::Safe;
+}
+const char *View::eject_message() const {
+    switch (eject_status) {
+    case EjectStatus::Ejecting:
+        return "EJECTING...";
+    case EjectStatus::Safe:
+        return "SAFE TO REMOVE";
+    case EjectStatus::Failed:
+        return "FAILED / POWER OFF";
+    case EjectStatus::QueueFull:
+        return "BUSY / TAP TO RETRY";
+    case EjectStatus::NoCard:
+        return "NO MOUNTED CARD";
+    case EjectStatus::Demo:
+        return "DEMO / NO CARD EJECTED";
+    default:
+        return "";
+    }
+}
+void View::request_export() {
+    if (export_status == ExportStatus::Exporting)
+        return;
+    if (demo)
+        export_status = ExportStatus::Demo;
+    else if (sd_checking)
+        export_status = ExportStatus::Checking;
+    else if (!sd || eject_status == EjectStatus::Ejecting || eject_status == EjectStatus::Safe ||
+             eject_status == EjectStatus::Failed)
+        export_status = ExportStatus::NoCard;
+    else if (sd_read_only)
+        export_status = ExportStatus::ReadOnly;
+    else if (sd_error)
+        export_status = ExportStatus::Failed;
+    else {
+        export_status = ExportStatus::Exporting;
+        requests |= Export;
+    }
+}
+void View::export_queued(bool accepted) {
+    if (export_status == ExportStatus::Exporting && !accepted)
+        export_status = ExportStatus::QueueFull;
+}
+void View::export_progress(uint32_t completed, uint32_t rows) {
+    if (export_status == ExportStatus::Exporting) {
+        if (completed != export_count) {
+            exported_rows = rows;
+            export_status = ExportStatus::Complete;
+        } else if (sd_error)
+            export_status = ExportStatus::Failed;
+        else if (sd_read_only)
+            export_status = ExportStatus::ReadOnly;
+        else if (!sd)
+            export_status = ExportStatus::NoCard;
+    }
+    export_count = completed;
+}
+void View::export_message(std::span<char> output) const {
+    if (export_status == ExportStatus::Complete) {
+        std::snprintf(output.data(), output.size(), "COMPLETE: %lu RECORDS",
+                      static_cast<unsigned long>(exported_rows));
+        return;
+    }
+    const char *message = "";
+    switch (export_status) {
+    case ExportStatus::Checking:
+        message = "CHECKING SD / EXPORT AFTER CHECK";
+        break;
+    case ExportStatus::Exporting:
+        message = "EXPORTING...";
+        break;
+    case ExportStatus::NoCard:
+        message = "INSERT SD / RESTART";
+        break;
+    case ExportStatus::ReadOnly:
+        message = "SD READ ONLY";
+        break;
+    case ExportStatus::Failed:
+        message = "FAILED / CHECK SD";
+        break;
+    case ExportStatus::QueueFull:
+        message = "BUSY / TAP TO RETRY";
+        break;
+    case ExportStatus::Demo:
+        message = "DEMO / NO FILES SAVED";
+        break;
+    default:
+        break;
+    }
+    std::snprintf(output.data(), output.size(), "%s", message);
+}
 uint64_t View::identity(const Detection &d) const {
     if (std::none_of(identity_key.begin(), identity_key.end(), [](auto b) { return b != 0; }))
         return 0;
     return meal_hash(identity_key, d);
 }
-bool View::alert_allowed(const Detection &d) const {
+bool View::is_ignored(const Detection &d) const {
+    const auto hash = identity(d);
+    if (!hash)
+        return false;
     const auto &c = d.demo ? preview_companion : companion;
+    return c.is_ignored(hash) ||
+           (samsung_identity(d) && c.is_ignored(address_hash(identity_key, d)));
+}
+bool View::alert_allowed(const Detection &d) const {
     return !paused && should_alert(settings, d) &&
-           now >= (d.demo ? preview_snooze_until : snooze_until) && !c.is_ignored(identity(d));
+           now >= (d.demo ? preview_snooze_until : snooze_until) && !is_ignored(d);
 }
 void View::open_actions(const Detection &d) {
     action_detection = d; // Freeze the target even if another event arrives.
+    home_alert_shown = false;
     alert_until = 0;
     notice[0] = 0;
     screen = Screen::AlertActions;
@@ -422,12 +652,16 @@ void View::reset_progress() {
     c.scents = {};
     c.equipped = 0;
     c.unlocked = 1;
-    if (demo)
+    if (demo) {
         preview_xp = 0;
-    else
+        preview_fullness = preview_mood = 70;
+        preview_decay_ms = now;
+    } else {
         pet = Pet{};
+        pet.decay_ms = now;
+    }
     known_level = pet.level();
-    unlock_until = level_until = 0;
+    unlock_until = level_until = celebration_until = 0;
 }
 void View::event(const Detection &d) {
     if (paused || size_t(d.category) >= category_count || d.score > 100)
@@ -435,8 +669,13 @@ void View::event(const Detection &d) {
     update_tag_watch();
     if (d.demo == demo && TagWatch::tag(d.category)) {
         const auto hash = identity(d);
+        // A full payload supersedes a service-only watch entry at this exact address.
+        // Do not carry its elapsed time into a newly learned broadcast identity.
+        if (samsung_identity(d))
+            if (auto *legacy = tag_watch.find(address_hash(identity_key, d)))
+                tag_watch.drop(*legacy, false);
         if (listening() && (settings.enabled_categories & (1U << unsigned(d.category))) &&
-            should_alert(settings, d) && d.score >= 50 && !collection().is_ignored(hash))
+            should_alert(settings, d) && d.score >= 50 && !is_ignored(d))
             tag_watch.observe(hash, d, now);
         else if (auto *e = tag_watch.find(hash))
             tag_watch.drop(*e, false);
@@ -461,12 +700,27 @@ void View::event(const Detection &d) {
     recent[0] = d;
     recent_count = std::min(recent_count + 1, recent.size());
     if (alert_allowed(d)) {
+        wake_for_alert();
         alert_detection = d;
         alert_until = now + 5000;
+    } else if (alert_until && d.demo == alert_detection.demo) {
+        const auto &pending = alert_detection;
+        const bool same = samsung_identity(d) && samsung_identity(pending)
+                              ? d.samsung.id == pending.samsung.id
+                              : d.category == pending.category && d.radio == pending.radio &&
+                                    d.address == pending.address &&
+                                    d.address_type == pending.address_type;
+        if (same)
+            alert_until = 0;
     }
     if (d.meal) {
         meal_category = d.category;
         meal_until = now + meal_duration;
+        celebration_until = meal_until + 2500;
+        if (demo && d.demo) {
+            Pet::nourish(d.score, preview_fullness, preview_mood);
+            preview_decay_ms = now;
+        }
     }
 }
 SnackPose View::snack_pose() const {
@@ -486,12 +740,15 @@ SnackPose View::snack_pose() const {
     return {SnackPhase::Happy, 22 + int((elapsed - 5700) / 180) % 3, 100, 4};
 }
 void View::rotate() {
+    wake_display();
     if (screen == Screen::Calibration || settings.rotation_locked)
         return;
     settings.portrait = !settings.portrait;
     requests |= Save | Rotate;
 }
 void View::next() {
+    if (wake_display())
+        return;
     screen = screen == Screen::Home        ? Screen::Log
              : screen == Screen::Log       ? Screen::Detectors
              : screen == Screen::Detectors ? Screen::Settings
@@ -502,6 +759,8 @@ void View::next() {
 void View::tap(int x, int y) {
     const Layout l(settings.portrait);
     if (x < 0 || y < 0 || x >= l.w || y >= l.h || screen == Screen::Calibration)
+        return;
+    if (wake_display())
         return;
     if (y < 26 && x < 174 && watch_warning()) {
         open_tag_watch();
@@ -559,6 +818,8 @@ void View::tap(int x, int y) {
             if (l.row(3).has(x, y)) {
                 if (collection().ignore(target->hash, target->category)) {
                     requests |= Save;
+                    if (!alert_allowed(alert_detection))
+                        alert_until = 0;
                     update_tag_watch();
                     screen = Screen::Home;
                 } else
@@ -597,16 +858,22 @@ void View::tap(int x, int y) {
             tag_watch.start(now, demo);
         watch_review = 0;
         requests |= Pause;
-        alert_until = meal_until = happy_until = 0;
+        alert_until = meal_until = happy_until = celebration_until = 0;
         scanning = !paused;
         notice[0] = 0;
+        return;
+    }
+    if (screen == Screen::Home && home_alert_shown && l.quiet().has(x, y)) {
+        // Radio events run before touch. Select what was actually drawn, even if
+        // the backing alert expired or was replaced since the previous frame.
+        open_actions(action_detection);
         return;
     }
     if (screen == Screen::Home && watch_warning() && l.quiet().has(x, y)) {
         open_tag_watch();
         return;
     }
-    if (screen == Screen::Home && alert_until > now && l.quiet().has(x, y)) {
+    if (screen == Screen::Home && !frame_presented && alert_until > now && l.quiet().has(x, y)) {
         open_actions(alert_detection);
         return;
     }
@@ -639,7 +906,28 @@ void View::tap(int x, int y) {
         if (l.row(3).has(x, y))
             screen = Screen::SelfTest;
         if (l.row(4).has(x, y))
+            screen = Screen::IdleDisplay;
+        if (l.more().has(x, y))
             screen = Screen::Settings;
+        return;
+    }
+    if (screen == Screen::IdleDisplay) {
+        if (l.row(0).has(x, y)) {
+            look().dim_minutes = next_timeout(look().dim_minutes);
+            requests |= Save;
+        }
+        if (l.row(1).has(x, y)) {
+            look().saver_minutes = next_timeout(look().saver_minutes);
+            requests |= Save;
+        }
+        if (l.row(2).has(x, y)) {
+            look().off_minutes = next_timeout(look().off_minutes);
+            requests |= Save;
+        }
+        if (l.row(3).has(x, y))
+            preview_saver();
+        if (l.row(4).has(x, y))
+            screen = Screen::Display;
         if (l.more().has(x, y))
             screen = Screen::Home;
         return;
@@ -707,6 +995,11 @@ void View::tap(int x, int y) {
             auto &c = action_detection.demo ? preview_companion : companion;
             if (c.ignore(identity(action_detection), action_detection.category)) {
                 requests |= Save;
+                // A repeat may have queued a Home card while this frozen target was open.
+                // Recheck its eligibility; an unrelated eligible alert must remain visible.
+                if (!alert_allowed(alert_detection))
+                    alert_until = 0;
+                update_tag_watch();
                 screen = Screen::Home;
                 std::snprintf(notice.data(), notice.size(), "IGNORED / LOGS AND MEALS KEPT");
             } else
@@ -721,17 +1014,37 @@ void View::tap(int x, int y) {
             screen = Screen::Home;
         return;
     }
+    if (screen == Screen::IgnoreBackup) {
+        if (l.row(0).has(x, y)) {
+            if (demo)
+                std::snprintf(notice.data(), notice.size(), "DEMO / NO SD WRITES");
+            else if (!backup_pending) {
+                backup_pending = true;
+                requests |= BackupIgnores;
+                std::snprintf(notice.data(), notice.size(), "BACKUP REQUESTED");
+            }
+        }
+        if (l.more().has(x, y))
+            screen = Screen::Ignored;
+        return;
+    }
     if (screen == Screen::Ignored) {
+        ignored_page = std::min(ignored_page, int(ignored_pages()) - 1);
         if (l.confirm(false).has(x, y))
             screen = Screen::Settings;
         if (l.confirm(true).has(x, y))
-            ignored_page = (ignored_page + 1) % 4;
+            ignored_page = (ignored_page + 1) % ignored_pages();
+        if (Rect{l.w - 148, l.h - 42, 136, 30}.has(x, y)) {
+            screen = Screen::IgnoreBackup;
+            notice = {};
+        }
         for (int i = 0; i < 4; ++i)
             if (l.detector(i).has(x, y)) {
-                auto &entry = collection().ignored[ignored_page * 4 + i];
-                if (entry.hash) {
-                    entry = {};
+                size_t slot = ignored_slot(unsigned(ignored_page * 4 + i));
+                if (slot < collection().ignored.size()) {
+                    collection().ignored[slot] = {};
                     requests |= Save;
+                    ignored_page = std::min(ignored_page, int(ignored_pages()) - 1);
                 }
             }
         return;
@@ -897,7 +1210,10 @@ void View::tap(int x, int y) {
         if (y >= 64 && y < (l.portrait ? 308 : 254) && (l.portrait || x < 300)) {
             if (pets != UINT32_MAX)
                 ++pets;
-            pet.stroke();
+            if (demo)
+                preview_mood = std::min<int>(100, preview_mood + 2);
+            else
+                pet.stroke();
             happy_until = now + 2500;
         }
     } else if (screen == Screen::Log) {
@@ -1036,10 +1352,10 @@ void View::tap(int x, int y) {
                     screen = Screen::ResearchWarning;
                 break;
             case 1:
-                requests |= Export;
+                request_export();
                 break;
             case 2:
-                requests |= Eject;
+                request_eject();
                 break;
             case 3:
                 demo = !demo;
@@ -1070,7 +1386,7 @@ void View::tap(int x, int y) {
                 screen = Screen::SelfTest;
                 break;
             case 4:
-                requests |= Export;
+                request_export();
                 break;
             }
         } else {
@@ -1099,6 +1415,42 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
     const Layout l(settings.portrait);
     if (tile_y < 0 || tile_y >= l.h || pixels.size() != size_t(l.w * tile_rows()))
         return;
+    if (tile_y == 0) {
+        frame_presented = true;
+        home_alert_shown = false;
+        displayed_identity = 0;
+        displayed_ignored = false;
+        const Detection *target = nullptr;
+        if (display_mode != DisplayMode::Saver && display_mode != DisplayMode::Off) {
+            if (screen == Screen::Home && !watch_warning() && alert_until > now) {
+                action_detection = alert_detection;
+                home_alert_shown = true;
+                target = &action_detection;
+            } else if (screen == Screen::AlertActions)
+                target = &action_detection;
+            else if (screen == Screen::Details && (detail_valid || selected < recent_count))
+                target = detail_valid ? &detail_detection : &recent[selected];
+        }
+        if (target) {
+            // Hash once per frame, never once per tile. This short on-screen code
+            // is only a comparison aid; matching/ignoring still uses all 64 bits.
+            displayed_identity = identity(*target);
+            const auto &list = target->demo ? preview_companion : companion;
+            displayed_ignored =
+                list.is_ignored(displayed_identity) ||
+                (samsung_identity(*target) && list.is_ignored(address_hash(identity_key, *target)));
+        }
+    }
+    if (display_mode == DisplayMode::Saver || display_mode == DisplayMode::Off) {
+        std::fill(pixels.begin(), pixels.end(), uint16_t(0));
+        if (display_mode == DisplayMode::Saver) {
+            Canvas saver{tile_y, l.w, l.h, tile_rows(), pixels};
+            const auto p = saver_position();
+            saver.dog(p.x, p.y, settings.character,
+                      settings.reduced_animation ? 0 : int(now / 250 % 4), collection().equipped);
+        }
+        return;
+    }
     Canvas c{tile_y, l.w, l.h, tile_rows(), pixels, look().theme, watch_red()};
     std::fill(pixels.begin(), pixels.end(), c.color(bg));
     char text[100];
@@ -1110,7 +1462,13 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
            : settings.research ? "RAW LOG"
                                : "PRIVATE",
            warning ? ink : mint, 1);
-    c.text(l.w - 174, 9, sd_error ? "SD ERROR" : sd ? "SD OK" : "SD OFF", muted, 1);
+    const char *sd_label = eject_status == EjectStatus::Safe       ? "SD SAFE"
+                           : eject_status == EjectStatus::Ejecting ? "SD WAIT"
+                           : sd_error                              ? "SD ERROR"
+                           : sd_checking                           ? "SD CHECK"
+                           : sd                                    ? "SD OK"
+                                                                   : "SD OFF";
+    c.text(l.w - 174, 9, sd_label, muted, 1);
     c.text(l.w - 57, 9, settings.rotation_locked ? "LOCKED" : "TURN",
            settings.rotation_locked ? muted : pink, 1);
     if (screen == Screen::Home && l.portrait) {
@@ -1294,6 +1652,10 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
                    : meal_category == Category::FLIPPER   ? "DOLPHIN SNACK!"
                    : meal_category == Category::PINEAPPLE ? "PINEAPPLE SNACK!"
                                                           : "A CLUE AND A CHEW.";
+        } else if (celebrating()) {
+            frame = 22 + (settings.reduced_animation ? 0 : int(now / 160) % 3);
+            state = "HAPPY HOUND";
+            line = "BELLY FULL. TAIL GOING!";
         } else if (unlock_until > now) {
             frame = 22 + (settings.reduced_animation ? 0 : int(now / 166) % 3);
             state = "NEW OUTFIT!";
@@ -1308,10 +1670,11 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
                                        "TAIL WAGS FOR YOU."};
             state = "GOOD HOUND";
             line = reactions[pets % 4];
-        } else if (pet.fullness < 25) {
-            frame = 20 + int(now / 500) % 2;
-            state = "PECKISH";
-            line = "NO RUSH. LET'S WANDER.";
+        } else if (needs_care()) {
+            frame = 20 + int(now / 1400) % 2;
+            state = fullness() <= Pet::low_needs ? "HUNGRY" : "LOW SPIRITS";
+            line = fullness() <= Pet::low_needs ? "A LITTLE SNACK, PLEASE?"
+                                                : "COULD USE A SNACK AND A PAT.";
         } else if ((now / 15000) % 4 == 0 && (now / 4000) % 3 == 2) {
             frame = 11 + int(now / 450) % 2;
             state = "ALL EARS";
@@ -1329,12 +1692,16 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
             line = "EVEN HOUNDS TAKE BREAKS.";
         }
         if (settings.reduced_animation && snack.phase == SnackPhase::None)
-            frame = paused                                                           ? 17
-                    : (happy_until > now || level_until > now || unlock_until > now) ? 22
-                    : pet.fullness < 25                                              ? 20
-                                                                                     : 0;
+            frame =
+                paused ? 17
+                : (celebrating() || happy_until > now || level_until > now || unlock_until > now)
+                    ? 22
+                : needs_care() ? 20
+                               : 0;
         int dog_x = 12 + (stage_w - 128) / 2, dog_y = 95 + (l.portrait ? 22 : 0);
         int food_x = stage_w - 30, food_y = dog_y + 68;
+        if (celebrating() && !settings.reduced_animation)
+            dog_y += 14 - celebration_jump();
         if (snack.phase == SnackPhase::Approach || snack.phase == SnackPhase::Chew)
             dog_x += (food_x - 124 - dog_x) * snack.approach / 100;
         if (snack.phase != SnackPhase::None && snack.phase != SnackPhase::Happy)
@@ -1360,7 +1727,7 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
         int sx = l.portrait ? 16 : 306, sy = l.portrait ? 304 : 72;
         c.text(sx, sy, state, mint, 2);
         if (look().compact) {
-            std::snprintf(text, sizeof(text), "FULL %u / MOOD %u", pet.fullness, pet.mood);
+            std::snprintf(text, sizeof(text), "FULL %u / MOOD %u", fullness(), mood());
             c.text(sx, sy + 29, text, muted, 1);
             std::snprintf(text, sizeof(text), "STRONG %lu / LIKELY %lu",
                           static_cast<unsigned long>(counts[0]),
@@ -1382,10 +1749,11 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
         } else {
             c.text(sx, sy + 27, "FULLNESS", muted, 1);
             c.rect(sx + 60, sy + 25, 92, 9, panel);
-            c.rect(sx + 60, sy + 25, pet.fullness * 92 / 100, 9, mint);
+            c.rect(sx + 60, sy + 25, fullness() * 92 / 100, 9,
+                   fullness() <= Pet::low_needs ? amber : mint);
             c.text(sx, sy + 45, "MOOD", muted, 1);
             c.rect(sx + 60, sy + 43, 92, 9, panel);
-            c.rect(sx + 60, sy + 43, pet.mood * 92 / 100, 9, pink);
+            c.rect(sx + 60, sy + 43, mood() * 92 / 100, 9, mood() <= Pet::low_needs ? amber : pink);
             std::snprintf(text, sizeof(text), "%lu STRONG", static_cast<unsigned long>(counts[0]));
             c.text(sx, sy + 72, text, ink, l.portrait ? 1 : 2);
             std::snprintf(text, sizeof(text), "%lu LIKELY", static_cast<unsigned long>(counts[1]));
@@ -1446,13 +1814,21 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
             else
                 std::snprintf(text, sizeof(text), "%s / %u", badge(d.score), d.score);
             c.text(x + 10, y + 56, text, amber, 1);
+            if (!warning) {
+                if (displayed_identity)
+                    std::snprintf(text, sizeof(text), "ID %08lX",
+                                  static_cast<unsigned long>(displayed_identity >> 32));
+                else
+                    std::snprintf(text, sizeof(text), "ID UNAVAILABLE");
+                c.text(x + 10, y + 74, text, mint, 1);
+            }
             if (!l.portrait)
-                c.wrap(x + 10, y + 75,
+                c.wrap(x + 10, y + (warning ? 75 : 88),
                        warning                      ? "Repeated tag presence. Movement unconfirmed."
                        : d.rule_count && d.rules[0] ? d.rules[0]->reason
                                                     : "Observation received",
-                       23, muted, 1, 4);
-            else
+                       23, muted, 1, warning ? 4 : 3);
+            else if (warning)
                 c.text(x + 10, y + h - 16,
                        warning  ? "PRESENCE CLUE"
                        : d.demo ? "DEMO / TAP TO DISMISS"
@@ -1552,11 +1928,28 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
                look().inverted);
         button(c, l.row(2), settings.reduced_animation ? "ANIMATION: REDUCED" : "ANIMATION: FULL");
         button(c, l.row(3), "COLOR / TOUCH TEST");
-        button(c, l.row(4), "BACK TO SETTINGS");
-        button(c, l.more(), "BACK TO HOUND", true);
+        button(c, l.row(4), "SCREEN SAVER / TIMEOUTS");
+        button(c, l.more(), "BACK TO SETTINGS", true);
         c.text(16, l.h - 34, "INVERSION CHANGES THE PANEL COLOR POLARITY", muted, 1);
         c.text(16, l.h - 20,
                demo ? "DEMO INVERSION / NOT SAVED" : "SAVED AUTOMATICALLY / DEFAULT OFF", mint, 1);
+        break;
+    }
+    case Screen::IdleDisplay: {
+        const uint8_t minutes[] = {look().dim_minutes, look().saver_minutes, look().off_minutes};
+        constexpr const char *labels[] = {"DIM AFTER", "BOUNCE AFTER", "SCREEN OFF AFTER"};
+        for (int i = 0; i < 3; ++i) {
+            if (minutes[i])
+                std::snprintf(text, sizeof(text), "%s: %u MIN", labels[i], minutes[i]);
+            else
+                std::snprintf(text, sizeof(text), "%s: NEVER", labels[i]);
+            button(c, l.row(i), text);
+        }
+        button(c, l.row(3), "PREVIEW BOUNCING HOUND");
+        button(c, l.row(4), "BACK TO DISPLAY");
+        button(c, l.more(), "BACK TO HOUND", true);
+        c.text(16, l.h - 34, "TRAVEL WATCH ALWAYS BLOCKS SCREEN OFF", mint, 1);
+        c.text(16, l.h - 20, "IDLE TIME / SCANNING AND LOGGING CONTINUE", muted, 1);
         break;
     }
     case Screen::Appearance: {
@@ -1757,34 +2150,73 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
         button(c, l.row(0), "SNOOZE ALL: 5 MIN");
         button(c, l.row(1), "SNOOZE ALL: 15 MIN");
         button(c, l.row(2), "SNOOZE ALL: 60 MIN");
-        std::snprintf(text, sizeof(text), "IGNORE THIS %s",
+        std::snprintf(text, sizeof(text),
+                      displayed_ignored ? "ALREADY IGNORED: %s" : "IGNORE THIS %s",
                       categories[size_t(action_detection.category)]);
         button(c, l.row(3), text);
         button(c, l.row(4), "RESUME SNOOZED ALERTS");
-        c.text(16, l.h - 34, notice[0] ? notice.data() : "QUIETS ALERTS / LOGS AND MEALS KEPT",
-               amber, 1);
+        if (displayed_identity)
+            std::snprintf(text, sizeof(text), "ID %08lX / %s",
+                          static_cast<unsigned long>(displayed_identity >> 32),
+                          displayed_ignored ? "IGNORED" : "NOT IGNORED");
+        else
+            std::snprintf(text, sizeof(text), "ID UNAVAILABLE");
+        c.text(16, l.h - 34, notice[0] ? notice.data() : text, amber, 1);
         button(c, l.more(), "BACK TO HOUND");
-        c.text(16, l.h - 21, "IGNORE APPLIES TO THIS DEVICE AND CATEGORY", muted, 1);
+        c.text(16, l.h - 21,
+               action_detection.category == Category::SAMSUNG_TAG
+                   ? (samsung_identity(action_detection) ? "IGNORES BROADCAST ID / ID CAN CHANGE"
+                                                         : "IGNORES RADIO ID / ID CAN CHANGE")
+                   : "IGNORES CURRENT RADIO ID / ID CAN CHANGE",
+               muted, 1);
         break;
-    case Screen::Ignored:
+    case Screen::IgnoreBackup:
+        button(c, l.row(0), backup_pending ? "BACKUP REQUEST PENDING" : "BACK UP IGNORES NOW");
+        c.text(16, l.portrait ? 148 : 112, ignore_backup_message(), mint, 1);
+        if (sd_checking)
+            std::snprintf(text, sizeof(text), "CHECKED %lu RECORDS / %lu FILES",
+                          static_cast<unsigned long>(sd_checked_rows),
+                          static_cast<unsigned long>(sd_checked_files));
+        else
+            std::snprintf(text, sizeof(text), "%lu ENTRIES IN LAST SD BACKUP",
+                          static_cast<unsigned long>(ignore_backup_count));
+        c.text(16, l.portrait ? 169 : 132, demo ? "DEMO LIST STAYS IN MEMORY" : text, muted, 1);
+        c.wrap(16, l.portrait ? 205 : 158,
+               "Ignores stay saved on this Hound without a card. SD keeps a recovery copy and "
+               "updates when your list changes.",
+               l.portrait ? 44 : 70, ink, 1);
+        c.text(16, l.h - 110, notice.data(), amber, 1);
+        button(c, l.more(), "BACK TO IGNORED SCENTS");
+        break;
+    case Screen::Ignored: {
+        const unsigned page = std::min(unsigned(std::max(0, ignored_page)), ignored_pages() - 1);
         for (int i = 0; i < 4; ++i) {
-            const auto &entry = collection().ignored[ignored_page * 4 + i];
+            const auto slot = ignored_slot(page * 4 + i);
+            const bool used = slot < collection().ignored.size();
             auto r = l.detector(i);
-            c.box(r.x, r.y, r.w, r.h, entry.hash ? mint : grid);
-            if (entry.hash)
-                std::snprintf(text, sizeof(text), "%s / ENTRY %02d",
-                              categories[size_t(entry.category)], ignored_page * 4 + i + 1);
+            c.box(r.x, r.y, r.w, r.h, used ? mint : grid);
+            if (used)
+                std::snprintf(text, sizeof(text), "%s / ENTRY %02u",
+                              categories[size_t(collection().ignored[slot].category)],
+                              unsigned(slot + 1));
             else
-                std::snprintf(text, sizeof(text), "EMPTY SLOT %02d", ignored_page * 4 + i + 1);
-            c.text(r.x + 8, r.y + 6, text, entry.hash ? ink : muted, 1);
+                std::snprintf(text, sizeof(text), "NO MORE IGNORED SCENTS");
+            c.text(r.x + 8, r.y + 6, text, used ? ink : muted, 1);
             c.text(r.x + 8, r.y + (l.portrait ? 34 : 23),
-                   entry.hash ? "TAP TO RESTORE THIS SCENT'S ALERTS" : "NO IGNORED DEVICE", muted,
-                   1);
+                   used ? "TAP TO RESTORE THIS SCENT'S ALERTS" : "ADD FROM A SCENT'S IGNORE MENU",
+                   muted, 1);
         }
         button(c, l.confirm(false), "BACK");
-        std::snprintf(text, sizeof(text), "NEXT / %d OF 4", ignored_page + 1);
+        std::snprintf(text, sizeof(text), "NEXT / %u OF %u", page + 1, ignored_pages());
         button(c, l.confirm(true), text);
+        const auto count = collection().ignored_count();
+        std::snprintf(text, sizeof(text), "%u / %u USED", count, unsigned(ignore_capacity));
+        c.text(16, l.h - 40, text, ink, 1);
+        std::snprintf(text, sizeof(text), "%u FREE", unsigned(ignore_capacity) - count);
+        c.text(16, l.h - 24, text, mint, 1);
+        button(c, {l.w - 148, l.h - 42, 136, 30}, "SD BACKUP");
         break;
+    }
     case Screen::Log:
         if (!recent_count)
             c.wrap(16, 100, "No scents yet. A quiet place is fine. Your hound is happy to wait.",
@@ -1898,7 +2330,25 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
                 label = labels[i];
             }
             auto r = l.row(i);
-            button(c, r, label, settings_page == 1 && i == 0);
+            bool export_row = (settings_page == 3 && i == 1) || (settings_page == 5 && i == 4);
+            if (export_row && export_status != ExportStatus::Idle) {
+                export_message(text);
+                auto color = export_status == ExportStatus::Complete ? mint : amber;
+                c.box(r.x, r.y, r.w, r.h, color);
+                c.text(r.x + (r.w - 14 * 6) / 2, r.y + 4, "EXPORT HISTORY", ink, 1);
+                int scale = int(std::strlen(text)) * 12 + 20 <= r.w ? 2 : 1;
+                c.text(r.x + (r.w - int(std::strlen(text)) * 6 * scale) / 2,
+                       r.y + r.h - 3 - 7 * scale, text, color, scale);
+            } else if (settings_page == 3 && i == 2 && eject_status != EjectStatus::Idle) {
+                const char *message = eject_message();
+                auto color = eject_status == EjectStatus::Safe ? mint : amber;
+                c.box(r.x, r.y, r.w, r.h, color);
+                c.text(r.x + (r.w - 8 * 6) / 2, r.y + 4, "EJECT SD", ink, 1);
+                int scale = int(std::strlen(message)) * 12 + 20 <= r.w ? 2 : 1;
+                c.text(r.x + (r.w - int(std::strlen(message)) * 6 * scale) / 2,
+                       r.y + r.h - 3 - 7 * scale, message, color, scale);
+            } else
+                button(c, r, label, settings_page == 1 && i == 0);
             if (settings_page == 1 && i == 1 && settings.rotation_locked)
                 c.text(r.x + r.w - 52, r.y + (r.h - 7) / 2, "LOCKED", muted, 1);
         }
@@ -1994,11 +2444,15 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
                        l.portrait ? 90 + i * 23 : 82 + (i % 6) * 24, text, ink, 1);
             }
         else {
+            std::snprintf(text, sizeof(text), "SD CHECK: %lu RECORDS / %lu FILES",
+                          static_cast<unsigned long>(sd_checked_rows),
+                          static_cast<unsigned long>(sd_checked_files));
             c.text(16, 85,
-                   sd_read_only ? "SD READ ONLY / CHECK CARD"
-                   : sd_error   ? "SD ERROR"
-                   : sd         ? "SD READY"
-                                : "SD UNAVAILABLE",
+                   sd_checking    ? text
+                   : sd_read_only ? "SD READ ONLY / CHECK CARD"
+                   : sd_error     ? "SD ERROR"
+                   : sd           ? "SD READY"
+                                  : "SD UNAVAILABLE",
                    amber, 1);
             c.text(16, 112,
                    battery_cal.enabled ? "BATTERY ESTIMATE / CALIBRATED" : "BATTERY NOT ENABLED",
@@ -2010,6 +2464,12 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
             std::snprintf(text, sizeof(text), "LARGEST HEAP BLOCK: %lu B",
                           static_cast<unsigned long>(largest_heap));
             c.text(16, 193, text, muted, 1);
+            std::snprintf(text, sizeof(text), "NVS SAVES: %lu",
+                          static_cast<unsigned long>(save_count));
+            c.text(16, 209, text, ink, 1);
+            std::snprintf(text, sizeof(text), "NVS ERRORS: %lu",
+                          static_cast<unsigned long>(save_errors));
+            c.text(16, 225, text, save_errors ? amber : ink, 1);
         }
         std::snprintf(text, sizeof(text), "NEXT PAGE / %d OF 3", diagnostic_page + 1);
         button(c, l.more(), text);
@@ -2020,6 +2480,62 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
             const auto &d = detail_valid ? detail_detection : recent[selected];
             button(c, {l.w - 108, 32, 96, 30}, detail_page ? "EVIDENCE" : "MORE");
             button(c, {12, l.h - 40, l.w - 24, 32}, "FOLLOW SCENT", true);
+            if (detail_page && d.category == Category::AIRTAG) {
+                c.text(16, 80, "APPLE FIND MY / CURRENT ID", mint, 1);
+                if (displayed_identity)
+                    std::snprintf(text, sizeof(text), "ID %08lX / %s",
+                                  static_cast<unsigned long>(displayed_identity >> 32),
+                                  displayed_ignored ? "IGNORED" : "NOT IGNORED");
+                else
+                    std::snprintf(text, sizeof(text), "ID UNAVAILABLE");
+                c.text(16, 108, text, ink, 1);
+                c.text(16, 132, "IDENTITY: RADIO ADDRESS AND TYPE", ink, 1);
+                c.wrap(16, 156, "Find My clue: may be an AirTag or another Apple-network device.",
+                       l.portrait ? 46 : 72, muted, 1);
+                c.text(16, 193, "CHANGED IDS CAN ALERT AGAIN", amber, 1);
+                c.text(16, 211, "IGNORED SIGNALS STILL COUNT AND LOG", muted, 1);
+                button(c, l.confirm(false), "BACK TO LOG");
+                button(c, l.confirm(true), "SNOOZE / IGNORE");
+                break;
+            }
+            if (detail_page && d.category == Category::SAMSUNG_TAG) {
+                c.text(16, 80, "SAMSUNG / ADVERTISED STATE", mint, 1);
+                const char *state = "UNAVAILABLE";
+                switch (d.samsung.state) {
+                case SamsungState::RecentlySeparated:
+                    state = "RECENTLY SEPARATED";
+                    break;
+                case SamsungState::Offline:
+                    state = "OFFLINE";
+                    break;
+                case SamsungState::LongOffline:
+                    state = "LONG OFFLINE";
+                    break;
+                case SamsungState::Connected:
+                    state = "OWNER CONNECTED";
+                    break;
+                case SamsungState::Unknown:
+                    state = "UNKNOWN";
+                    break;
+                default:
+                    break;
+                }
+                std::snprintf(text, sizeof(text), "REPORTED: %s", state);
+                c.text(16, 108, text, ink, 1);
+                c.text(16, 132,
+                       samsung_identity(d) ? "IDENTITY: BROADCAST ID" : "IDENTITY: RADIO ADDRESS",
+                       ink, 1);
+                c.text(16, 156,
+                       samsung_connected(d) ? "CONNECTED REPORT: ALERTS QUIET"
+                                            : "NO OWNER-CONNECTION SUPPRESSION",
+                       mint, 1);
+                c.text(16, 180, is_ignored(d) ? "CURRENT ID: IGNORED" : "CURRENT ID: NOT IGNORED",
+                       ink, 1);
+                c.text(16, 204, "ID CAN CHANGE / CLAIM NOT VERIFIED", amber, 1);
+                button(c, l.confirm(false), "BACK TO LOG");
+                button(c, l.confirm(true), "SNOOZE / IGNORE");
+                break;
+            }
             if (detail_page) {
                 c.text(16, 80, "REMOTE ID / LOCAL SNAPSHOT", mint, 1);
                 if (d.category != Category::DRONE || !detail_drone.present) {

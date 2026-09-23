@@ -16,10 +16,243 @@ static int checks{};
             std::exit(1);                                                                          \
         }                                                                                          \
     } while (false)
+void export_feedback_tests() {
+    for (bool portrait : {false, true})
+        for (int page : {3, 5}) {
+            Settings settings;
+            settings.onboarded = true;
+            settings.portrait = portrait;
+            Pet dog;
+            ui::View view(settings, dog);
+            view.screen = ui::Screen::Settings;
+            view.settings_page = page;
+            view.sd = true;
+            view.export_progress(1, 12); // An earlier export must not complete a new one.
+            int row = page == 3 ? 1 : 4;
+            int top = (portrait ? 80 : 66) + row * (portrait ? 55 : 34);
+            auto tap = [&] { view.tap(30, top + 10); };
+            auto frame = [&] {
+                std::vector<uint16_t> pixels(view.width() * view.height() + 2);
+                pixels.front() = 0x1234;
+                pixels.back() = 0x5678;
+                for (int y = 0; y < view.height(); y += view.tile_rows())
+                    view.render(y, std::span(pixels).subspan(1 + y * view.width(),
+                                                             view.width() * view.tile_rows()));
+                CHECK(pixels.front() == 0x1234 && pixels.back() == 0x5678);
+                return pixels;
+            };
+            const auto before = frame();
+            tap();
+            CHECK(view.requests & ui::Export);
+            CHECK(view.export_status == ui::ExportStatus::Exporting);
+            view.requests = 0;
+            tap();
+            CHECK(!view.requests); // Repeated taps cannot flood the storage worker.
+            view.export_queued(true);
+            view.export_progress(1, 12);
+            CHECK(view.export_status == ui::ExportStatus::Exporting);
+            view.export_progress(2, 32);
+            CHECK(view.export_status == ui::ExportStatus::Complete);
+            CHECK(view.exported_rows == 32 && view.export_count == 2);
+            std::array<char, 64> message{};
+            view.export_message(message);
+            CHECK(std::string_view(message.data()) == "COMPLETE: 32 RECORDS");
+            const auto after = frame();
+            CHECK(after != before);
+            for (int y = 0; y < view.height(); ++y)
+                if (y < top || y >= top + (portrait ? 48 : 30))
+                    CHECK(std::equal(before.begin() + 1 + y * view.width(),
+                                     before.begin() + 1 + (y + 1) * view.width(),
+                                     after.begin() + 1 + y * view.width()));
+            view.export_progress(2, 32);
+            CHECK(view.export_status == ui::ExportStatus::Complete); // Persistent acknowledgement.
+            tap();
+            CHECK(view.export_status == ui::ExportStatus::Exporting);
+            view.export_queued(false);
+            CHECK(view.export_status == ui::ExportStatus::QueueFull);
+            view.requests = 0;
+            tap(); // Retry queue saturation.
+            CHECK(view.requests & ui::Export);
+            view.export_progress(3, 0);
+            CHECK(view.export_status == ui::ExportStatus::Complete && view.exported_rows == 0);
+            view.requests = 0;
+            view.demo = true;
+            tap();
+            CHECK(!view.requests && view.export_status == ui::ExportStatus::Demo);
+            view.demo = false;
+            view.sd = false;
+            tap();
+            CHECK(!view.requests && view.export_status == ui::ExportStatus::NoCard);
+            view.sd = true;
+            view.sd_read_only = true;
+            tap();
+            CHECK(!view.requests && view.export_status == ui::ExportStatus::ReadOnly);
+            view.sd_read_only = false;
+            view.sd_error = true;
+            tap();
+            CHECK(!view.requests && view.export_status == ui::ExportStatus::Failed);
+            view.sd_error = false;
+            tap();
+            CHECK(view.export_status == ui::ExportStatus::Exporting);
+            view.sd_error = true; // A failed worker operation never reports completion.
+            view.export_progress(3, 0);
+            CHECK(view.export_status == ui::ExportStatus::Failed);
+            view.exported_rows = UINT32_MAX;
+            for (auto status :
+                 {ui::ExportStatus::Exporting, ui::ExportStatus::Complete, ui::ExportStatus::NoCard,
+                  ui::ExportStatus::ReadOnly, ui::ExportStatus::Failed, ui::ExportStatus::QueueFull,
+                  ui::ExportStatus::Demo}) {
+                view.export_status = status;
+                view.export_message(message);
+                CHECK(std::strlen(message.data()) * 6U <= unsigned(view.width() - 44));
+                CHECK(!message.empty() && message[0]);
+                frame();
+            }
+        }
+}
+void eject_feedback_tests() {
+    for (bool portrait : {false, true}) {
+        Settings settings;
+        settings.onboarded = true;
+        settings.portrait = portrait;
+        Pet dog;
+        ui::View view(settings, dog);
+        view.screen = ui::Screen::Settings;
+        view.settings_page = 3;
+        view.sd = true;
+        const int y = (portrait ? 80 : 66) + 2 * (portrait ? 55 : 34) + 10;
+        auto tap = [&] { view.tap(30, y); };
+        tap();
+        CHECK(view.requests & ui::Eject);
+        CHECK(view.eject_status == ui::EjectStatus::Ejecting);
+        view.requests = 0;
+        tap();
+        CHECK(!view.requests);
+        view.eject_queued(false);
+        CHECK(view.eject_status == ui::EjectStatus::QueueFull);
+        tap();
+        CHECK(view.requests & ui::Eject);
+        view.requests = 0;
+        view.eject_queued(true);
+        view.request_export();
+        CHECK(!view.requests && view.export_status == ui::ExportStatus::NoCard);
+        view.eject_progress(false, false);
+        CHECK(view.eject_status == ui::EjectStatus::Ejecting);
+        view.sd_error = true; // An older SD error must not hide actual close success.
+        view.eject_progress(true, false);
+        CHECK(view.eject_status == ui::EjectStatus::Safe);
+        CHECK(std::string_view(view.eject_message()) == "SAFE TO REMOVE");
+        tap();
+        CHECK(!view.requests);
+        view.eject_progress(true, true);
+        CHECK(view.eject_status == ui::EjectStatus::Failed);
+        tap();
+        CHECK(!view.requests && view.eject_status == ui::EjectStatus::Failed);
+        view.demo = true;
+        tap();
+        view.eject_progress(true, false);
+        CHECK(!view.requests && view.eject_status == ui::EjectStatus::Demo);
+        view.demo = false;
+        view.sd = false;
+        view.eject_status = ui::EjectStatus::Idle;
+        tap();
+        CHECK(!view.requests && view.eject_status == ui::EjectStatus::NoCard);
+        for (auto status :
+             {ui::EjectStatus::Ejecting, ui::EjectStatus::Safe, ui::EjectStatus::Failed,
+              ui::EjectStatus::QueueFull, ui::EjectStatus::NoCard, ui::EjectStatus::Demo}) {
+            view.eject_status = status;
+            CHECK(std::strlen(view.eject_message()) * 6U <= unsigned(view.width() - 44));
+            std::vector<uint16_t> pixels(view.width() * view.height() + 2);
+            pixels.front() = 0x1234;
+            pixels.back() = 0x5678;
+            for (int row = 0; row < view.height(); row += view.tile_rows())
+                view.render(row, std::span(pixels).subspan(1 + row * view.width(),
+                                                           view.width() * view.tile_rows()));
+            CHECK(pixels.front() == 0x1234 && pixels.back() == 0x5678);
+        }
+    }
+}
+void care_tests() {
+    for (bool portrait : {false, true})
+        for (int breed = 0; breed < 6; ++breed) {
+            Settings s;
+            s.onboarded = true;
+            s.portrait = portrait;
+            s.character = breed;
+            Pet p;
+            ui::View v(s, p);
+            v.screen = ui::Screen::Home;
+            p.fullness = 25;
+            CHECK(v.needs_care());
+            p.fullness = 70;
+            p.mood = 25;
+            CHECK(v.needs_care());
+            p.mood = 26;
+            CHECK(!v.needs_care());
+            v.demo = true;
+            v.now = Pet::needs_interval_ms;
+            v.tick_pet();
+            CHECK(v.fullness() == 67 && v.mood() == 68);
+            CHECK(p.fullness == 70 && p.mood == 26); // Demo cannot change saved needs.
+            v.preview_fullness = v.preview_mood = 0;
+            CHECK(v.needs_care());
+            Detection d{};
+            d.demo = true;
+            d.meal = true;
+            d.score = 60;
+            d.category = Category::SAMSUNG_TAG;
+            v.event(d);
+            CHECK(v.fullness() == 35 && v.mood() == 40 && !v.needs_care());
+            CHECK(p.meals == 0 && p.xp == 0 && p.mood == 26);
+            auto start = v.now;
+            v.now = start + 5700;
+            CHECK(v.celebrating() && v.celebration_jump() == 0);
+            v.now = start + 6000;
+            CHECK(v.celebrating() && v.celebration_jump() == 14);
+            v.now = start + 7500;
+            CHECK(v.celebrating());
+            s.reduced_animation = true;
+            CHECK(v.celebration_jump() == 0);
+            v.paused = true;
+            CHECK(!v.celebrating());
+            v.paused = false;
+            v.now = start + 9500;
+            CHECK(!v.celebrating());
+            v.demo = false;
+            v.now = 10800000;
+            v.reset_progress();
+            v.tick_pet();
+            CHECK(p.fullness == 70 && p.mood == 70 && p.decay_ms == v.now);
+            v.demo = true;
+            std::vector<uint16_t> tile(v.width() * v.tile_rows() + 2);
+            tile.front() = 0x1234;
+            tile.back() = 0x5678;
+            for (bool reduced : {false, true}) {
+                s.reduced_animation = reduced;
+                for (uint8_t need : {uint8_t(0), uint8_t(25), uint8_t(26)}) {
+                    v.preview_fullness = v.preview_mood = need;
+                    for (int y = 0; y < v.height(); y += v.tile_rows())
+                        v.render(y, std::span(tile).subspan(1, v.width() * v.tile_rows()));
+                    CHECK(tile.front() == 0x1234 && tile.back() == 0x5678);
+                }
+            }
+        }
+}
 int main() {
+    care_tests();
+    export_feedback_tests();
+    eject_feedback_tests();
     Settings s;
     Pet p;
     ui::View v(s, p);
+    v.save_pending = true;
+    CHECK(std::string_view(v.home_notice()) == "SAVE WAITING / RETRYING");
+    std::snprintf(v.notice.data(), v.notice.size(), "CRITICAL BATTERY");
+    CHECK(std::string_view(v.home_notice()) == "CRITICAL BATTERY");
+    v.save_pending = false;
+    CHECK(std::string_view(v.home_notice()) == "CRITICAL BATTERY");
+    v.notice[0] = 0;
+    CHECK(!v.home_notice()[0]);
     v.memory_status(70000, 69000, 32768);
     CHECK(v.low_heap && std::string_view(v.home_notice()) == "LOW HEAP - SEE DIAGNOSTICS");
     CHECK(v.heap == 70000 && v.min_heap == 69000 && v.largest_heap == 32768);

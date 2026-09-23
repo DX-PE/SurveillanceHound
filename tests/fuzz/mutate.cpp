@@ -13,6 +13,11 @@ int main(int argc, char **argv) {
     std::vector<std::vector<uint8_t>> seeds{{2, 1, 6, 3, 3, 0x5a, 0xfd},
                                             {30, 0xff, 0x4c, 0, 0x12, 0x19}};
     seeds.back().resize(31);
+    std::vector<uint8_t> samsung{0x5a, 0xfd, 0x15, 0x21, 0x43, 0x01, 1, 2, 3, 4, 5, 6, 7, 8};
+    samsung.resize(22);
+    seeds.push_back(samsung);
+    samsung.insert(samsung.begin(), {23, 0x16});
+    seeds.push_back(samsung);
     seeds.push_back({0xfa, 0xff, 0x0d, 0, 0x02, 0x12, 'X'});
     seeds.back().resize(29);
     std::string pwn = R"({"name":"test","version":"1.0","pwnd_tot":4})";

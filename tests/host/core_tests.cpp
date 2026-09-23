@@ -91,7 +91,56 @@ void recent_count_tests() {
     auto counts = engine.recent_counts(now + 1000, s);
     CHECK(counts[0] == 128 && counts[1] == 0 && counts[2] == 0);
 }
+void needs_tests() {
+    Pet p;
+    p.tick(Pet::needs_interval_ms - 1);
+    CHECK(p.fullness == 70 && p.mood == 70);
+    p.tick(Pet::needs_interval_ms);
+    CHECK(p.fullness == 67 && p.mood == 68);
+    p.tick(Pet::needs_interval_ms);
+    CHECK(p.fullness == 67 && p.mood == 68);
+    p.tick(Pet::needs_interval_ms * 15);
+    CHECK(p.fullness == 25 && p.mood == 40);
+    p.tick(Pet::needs_interval_ms * 40);
+    CHECK(p.fullness == 0 && p.mood == 0);
+    p.tick(100); // Rebase after clock reset without decay or underflow.
+    CHECK(p.decay_ms == 100 && p.fullness == 0 && p.mood == 0);
+    Detection d{};
+    d.category = Category::SAMSUNG_TAG;
+    d.score = 60;
+    d.meal = true;
+    d.last_ms = 200;
+    p.feed(d);
+    CHECK(p.fullness == 35 && p.mood == 40 && p.decay_ms == 200);
+    CHECK(p.meals == 1);
+    p.tick(200 + Pet::needs_interval_ms - 1);
+    CHECK(p.fullness == 35 && p.mood == 40);
+    p.tick(200 + Pet::needs_interval_ms);
+    CHECK(p.fullness == 32 && p.mood == 38);
+    auto saved = p;
+    d.meal = false;
+    p.feed(d);
+    d.meal = true;
+    d.demo = true;
+    p.feed(d);
+    CHECK(p.fullness == saved.fullness && p.mood == saved.mood && p.meals == saved.meals);
+    d.demo = false;
+    d.score = 20;
+    p.feed(d);
+    CHECK(p.meals == saved.meals);
+    p.feed(d, true);
+    CHECK(p.meals == saved.meals + 1 && p.fullness == 38 && p.mood == 44);
+    p.fullness = p.mood = 99;
+    d.score = 85;
+    p.feed(d);
+    CHECK(p.fullness == 100 && p.mood == 100);
+    p.tick(UINT64_MAX);
+    CHECK(p.fullness == 0 && p.mood == 0);
+    p.stroke();
+    CHECK(p.fullness == 0 && p.mood == 2);
+}
 int main() {
+    needs_tests();
     recent_count_tests();
     Observation o{};
     auto b = beacon();
@@ -196,6 +245,56 @@ int main() {
     o.contradiction = true;
     CHECK(f.ingest(o, settings, out) == 1);
     CHECK(out[0].score == 40);
+    // Dense cache storage must preserve independence between every coexisting
+    // evidence kind, while exact/prefix matches remain one clue. Start at time
+    // zero so occupied slots cannot be confused with zero-initialized entries.
+    auto check_groups = [&](std::span<const Rule> rules, Observation sample) {
+        for (size_t i = 0; i < rules.size(); ++i)
+            for (size_t j = i + 1; j < rules.size(); ++j) {
+                std::array<Rule, 2> pair{rules[i], rules[j]};
+                Engine cache(pair);
+                const bool shared =
+                    (pair[0].kind == Kind::NameExact && pair[1].kind == Kind::NamePrefix) ||
+                    (pair[0].kind == Kind::SsidExact && pair[1].kind == Kind::SsidPrefix);
+                sample.ms = 0;
+                CHECK(cache.ingest(sample, settings, out) == 1);
+                CHECK(out[0].score == (shared ? 50 : 62));
+                CHECK(out[0].rule_count == (shared ? 1 : 2));
+                sample.ms = 30100;
+                CHECK(cache.ingest(sample, settings, out) == 1);
+                CHECK(out[0].seen_count == 2 && out[0].score == (shared ? 50 : 62));
+                CHECK(cache.recent_counts(sample.ms, settings)[1] == 1);
+            }
+    };
+    Rule ble_groups[] = {
+        rule("group.name", Kind::NameExact, "LAB", 50, 100),
+        rule("group.prefix", Kind::NamePrefix, "LA", 50, 100),
+        rule("group.uuid16", Kind::Uuid16, "FD5A", 50, 100),
+        rule("group.uuid128", Kind::Uuid128, "00000000000000000000000000000000", 50, 100),
+        rule("group.company", Kind::Company, "004C", 50, 100),
+        rule("group.payload", Kind::Payload, "4C001219", 50, 100),
+        rule("group.protocol", Kind::Protocol, "apple_find_my", 50, 100)};
+    Observation all_ble{};
+    all_ble.radio = Radio::Ble;
+    std::strcpy(all_ble.name.data(), "LAB");
+    all_ble.uuids[0] = 0xFD5A;
+    all_ble.uuid_count = all_ble.uuid128_count = 1;
+    all_ble.manufacturer = {0x4c, 0, 0x12, 0x19};
+    all_ble.manufacturer_len = 29;
+    check_groups(ble_groups, all_ble);
+    Rule wifi_groups[] = {rule("group.oui", Kind::Oui, "102030", 50, 100),
+                          rule("group.ssid", Kind::SsidExact, "LAB", 50, 100),
+                          rule("group.ssid_prefix", Kind::SsidPrefix, "LA", 50, 100),
+                          rule("group.vendor", Kind::Payload, "01", 50, 100),
+                          rule("group.pwn", Kind::Protocol, "pwnagotchi", 50, 100)};
+    Observation all_wifi{};
+    all_wifi.address = {0x10, 0x20, 0x30, 0, 0, 1};
+    all_wifi.ssid = {'L', 'A', 'B'};
+    all_wifi.ssid_len = 3;
+    all_wifi.vendor[0] = 1;
+    all_wifi.vendor_len = 1;
+    all_wifi.pwnagotchi = true;
+    check_groups(wifi_groups, all_wifi);
     // No OUI, Apple company ID, or Meta company ID is shipped as a product rule.
     Engine production(production_rules);
     for (Address a : {Address{0xb8, 0xe9, 0x37, 0, 0, 1}, Address{0x24, 0x6f, 0x28, 0, 0, 1}}) {
@@ -272,15 +371,15 @@ int main() {
     d.seen_count = 1;
     Pet pet;
     pet.feed(d);
-    CHECK(pet.xp == 13 && pet.fullness == 82 && pet.meals == 1);
+    CHECK(pet.xp == 13 && pet.fullness == 90 && pet.meals == 1);
     d.demo = true;
     pet.feed(d);
     CHECK(pet.xp == 13);
     d.demo = false;
     pet.tick(3600000 * 100ULL);
-    CHECK(pet.fullness == 0 && pet.mood == 20);
+    CHECK(pet.fullness == 0 && pet.mood == 0);
     pet.stroke();
-    CHECK(pet.mood == 22);
+    CHECK(pet.mood == 2);
     std::array<uint8_t, 32> key{}, digest{};
     std::array<char, 21> token{}, token2{};
     CHECK(private_token(key, d, token));

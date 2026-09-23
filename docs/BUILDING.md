@@ -65,6 +65,10 @@ The default NimBLE MSYS-1, MSYS-2 and ACL data pools are limited to four blocks 
 
 The eight-entry storage queue carries small tagged payloads. Up to two separately reserved state snapshots cover saves/sleep, including a snapshot currently being persisted. A queued snapshot is immutable until the worker finishes; exhausted slots or a full queue return failure, and a failed enqueue releases its reservation. Queue payloads are statically checked as trivially copyable, with no heap-owned objects. Persisted NVS record formats, storage stack allocation and SD behavior are unchanged.
 
+The ESP32 Bluetooth controller also reserves only one connection (its minimum), matching the host setting instead of retaining the controller default of three. The Central/GATT compatibility workaround described above remains enabled, and advertising/radio receive buffers retain their existing capacities. The SDK describes each controller connection reservation as 1 KB of DRAM.
+
+The 128-identity classifier cache stores nine independent evidence groups: exact/prefix SSID rules share a group, as do exact/prefix name rules. A zero sighting count marks an unused slot. This removes two unused evidence slots and redundant occupancy padding per identity, reducing the ESP32 Engine object from 29,072 to 26,000 bytes without reducing cache capacity or changing confidence rules. SD log stdio buffering is 512 bytes instead of 2,048; the FatFs sector cache and five-second/ten-record flush-and-fsync policy remain. These savings target SD-enabled heap headroom; current/minimum heap and export peaks still need measurement on the board. The 80,000-byte warning threshold remains unchanged.
+
 ## Development artifacts
 
 ```sh
@@ -72,3 +76,18 @@ SOURCE_DATE_EPOCH=1790035200 python3 tools/make_release.py --development --build
 ```
 
 This packages application/bootloader/partition binaries, a flash command, SHA-256 checksums and SPDX source inventory, plus linked-archive/member hashes and SDK/runtime notices in `BINARY-EVIDENCE.zip`. The inventory identifies the SDK as a pinned package; it does not certify the transitive binary license audit. Packaging without `--development` remains blocked until the release acceptance record is approved. Nothing is pushed, published, or tagged.
+
+The production NVS record writer/loader is isolated in `components/storage/state_store.cpp`; firmware and the host `storage_state` target compile the same implementation. The host target supplies a small NVS fake and exercises immediate writes (the pinned SDK's current behavior) as well as buffered commits. It checks complete-generation recovery at API boundaries; it does not simulate SDK flash-page internals. Persisted record layouts remain byte-for-byte compatible with the earlier firmware.
+
+Detection events are volatile C++ objects serialized to JSON field by field. Their aligned members are grouped to keep `Detection` at 80 bytes on ESP32 (a compile-time budget prevents padding regressions). This recovers 2,608 static DRAM bytes across the engine and UI compared with the first Samsung payload-ID build, retaining all 128 cache entries, 32 history entries and Samsung metadata. No persisted NVS structure changes. Reception buffers, stacks and the 80,000-byte warning threshold are unchanged.
+
+
+Idle display preferences use appearance record version 3, retaining the 12-byte record size. The loader explicitly migrates V1/V2 appearance records, ignores old padding and supplies 2/5/15-minute defaults. Other NVS record layouts are unchanged. The production persistence host tests cover legacy envelope CRCs, dirty padding, saved timeout round trips, invalid timeout/version rejection and interrupted saves. Older firmware that only understands appearance V2 cannot read a migrated V3 save: retain the pre-update NVS backup when downgrading.
+
+## Ignore list format and backup memory
+
+Companion V2 replaces 16 padded 16-byte ignores with 64 nine-byte entries (eight digest bytes plus category). Byte storage avoids unaligned 64-bit loads. Companion grows from 728 to 1,048 bytes; the five existing copies add 1,600 static bytes for the larger list. The frozen V1 loader validates and migrates all identities, discovery records and outfit state. Other persisted records and the partition table are unchanged. Older firmware cannot read Companion V2; retain the pre-update NVS backup for downgrades.
+
+SD backup serialization uses an explicit fixed 624-byte little-endian format with HMAC-SHA256 and alternating files. The worker keeps only a 32-byte change digest, never a second live ignore table; unchanged successful backups skip card I/O. No new task, heap-owned list, framebuffer or storage snapshot is introduced. The validated read primitive is available for development recovery; no boot-time import or user-facing restore control is provided. See [format and recovery constraints](IGNORE_STORAGE.md).
+
+SD history recovery is a portable incremental reader (`history_recovery.cpp`), shared with the host fault-injection target. It advances by a fixed work budget and retains reader/directory state on the existing storage task stack. Between batches the worker processes NVS and Eject, reusing one of the two snapshot slots for the newest deferred backup; replacing or cancelling it releases the old lease. There is no third saved-state copy or new stack allocation. Radio records during SD CHECK are not queued and are counted as dropped; normal card logging starts after validation. The 64-slot NVS and 624-byte SD backup formats are unchanged.

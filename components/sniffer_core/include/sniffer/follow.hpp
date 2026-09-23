@@ -4,13 +4,15 @@
 #include <algorithm>
 namespace sniffer {
 enum class ScentSignal { None, Paused, Waiting, Fresh, Stale, Lost };
-// One volatile identity, sampled at most once per second. No address correlation or RF changes.
+// One volatile identity, sampled at most once per second. Exact Samsung broadcast-ID
+// continuity only; no heuristic correlation of rotating IDs and no RF changes.
 struct FollowScent {
     struct Sample {
         uint64_t ms{};
         int8_t rssi{};
     };
     Address address{};
+    SamsungTag samsung{};
     Radio radio{};
     uint8_t address_type{};
     Category category{};
@@ -26,6 +28,7 @@ struct FollowScent {
         active = true;
         demo = d.demo;
         address = d.address;
+        samsung = samsung_identity(d) ? d.samsung : SamsungTag{};
         radio = d.radio;
         address_type = d.address_type;
         category = d.category;
@@ -37,10 +40,13 @@ struct FollowScent {
         started = accept_after = now;
     }
     bool observe(const Observation &o, bool synthetic) {
-        if (!active || synthetic != demo || o.address != address || o.radio != radio ||
-            o.address_type != address_type || o.ms <= accept_after ||
+        const bool same = samsung.valid() ? o.samsung.valid() && samsung.id == o.samsung.id
+                                          : o.address == address && o.address_type == address_type;
+        if (!active || synthetic != demo || !same || o.radio != radio || o.ms <= accept_after ||
             (received && o.ms < last_ms) || o.rssi > 0 || o.rssi < -126)
             return false;
+        address = o.address;
+        address_type = o.address_type;
         received = true;
         last_ms = o.ms;
         rssi = o.rssi;

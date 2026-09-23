@@ -2,6 +2,7 @@
 #include "signatures_generated.h"
 #include "sniffer/core.hpp"
 #include "sniffer/json.hpp"
+#include "sniffer/save_retry.hpp"
 #include "state.hpp"
 #include "storage_message.hpp"
 #include "ui.hpp"
@@ -67,6 +68,49 @@ void storage_message_tests() {
     std::memcpy(&received, &sent, sizeof(sent));
     CHECK(std::string_view(std::get<std::array<char, 256>>(received.payload).data()) ==
           "test diagnostics");
+    snapshots.release(first);
+    snapshots.release(second);
+
+    // A busy worker retains two immutable snapshots; retry later with the latest
+    // state rather than losing the change or allocating a third copy.
+    SaveRetry retry;
+    CHECK(!retry.due(59999) && retry.due(60000));
+    first = snapshots.claim(s);
+    second = snapshots.claim(s);
+    s.settings.name[0] = 'D';
+    retry.backup_requested = true;
+    retry.result(60000, snapshots.claim(s) >= 0);
+    CHECK(retry.backup_requested);
+    CHECK(retry.pending && retry.accepted == 0);
+    CHECK(!retry.due(59999) && !retry.due(60999) && retry.due(61000));
+    retry.result(61000, false);
+    CHECK(!retry.due(61999) && retry.due(62000));
+    snapshots.release(first);
+    s.settings.name[0] = 'E';
+    first = snapshots.claim(s);
+    retry.result(62000, first >= 0);
+    CHECK(!retry.pending && retry.accepted == 62000 && !retry.backup_requested);
+    CHECK(snapshots.get(first).settings.name[0] == 'E');
+    CHECK(snapshots.get(second).settings.name[0] == 'C');
+    CHECK(!retry.due(121999) && retry.due(122000));
+    snapshots.release(first);
+    snapshots.release(second);
+    storage::detail::DeferredBackup deferred;
+    first = snapshots.claim(s);
+    deferred.retain(snapshots, first, true);
+    s.settings.name[0] = 'F';
+    second = snapshots.claim(s);
+    CHECK(second >= 0 && snapshots.claim(s) < 0);
+    deferred.retain(snapshots, second, false);
+    CHECK(deferred.manual && snapshots.get(deferred.slot).settings.name[0] == 'F');
+    first = snapshots.claim(s);
+    CHECK(first >= 0); // Superseded backup released the older slot.
+    snapshots.release(first);
+    deferred.release(snapshots);
+    CHECK(deferred.slot < 0 && !deferred.manual);
+    first = snapshots.claim(s);
+    second = snapshots.claim(s);
+    CHECK(first >= 0 && second >= 0);
     snapshots.release(first);
     snapshots.release(second);
 }

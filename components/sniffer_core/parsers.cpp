@@ -114,6 +114,37 @@ bool parse_wifi(std::span<const uint8_t> frame, Observation &output) {
     output = o;
     return true;
 }
+bool parse_samsung_tag(std::span<const uint8_t> service, SamsungTag &output) {
+    // FD5A + the documented 20-byte v1/type-0 payload. See docs/SAMSUNG_TAGS.md.
+    // Do not interpret an unfamiliar/partial packet as an owner connection.
+    if (service.size() != 22 || service[0] != 0x5a || service[1] != 0xfd ||
+        (service[2] & 0xf8) != 0x10)
+        return false;
+    SamsungTag tag{};
+    std::copy_n(service.begin() + 6, tag.id.size(), tag.id.begin());
+    if (std::all_of(tag.id.begin(), tag.id.end(), [](auto b) { return b == 0; }) ||
+        std::all_of(tag.id.begin(), tag.id.end(), [](auto b) { return b == 0xff; }))
+        return false;
+    switch (service[2] & 7) {
+    case 1:
+        tag.state = SamsungState::RecentlySeparated;
+        break;
+    case 2:
+        tag.state = SamsungState::Offline;
+        break;
+    case 3:
+        tag.state = SamsungState::LongOffline;
+        break;
+    case 5:
+        tag.state = SamsungState::Connected;
+        break;
+    default:
+        tag.state = SamsungState::Unknown;
+        break;
+    }
+    output = tag;
+    return true;
+}
 bool parse_ble(std::span<const uint8_t> data, Observation &output) {
     if (data.size() > 31)
         return false; // Legacy advertising only, no scan responses.
@@ -169,6 +200,7 @@ bool parse_ble(std::span<const uint8_t> data, Observation &output) {
                 o.uuids[o.uuid_count++] = le16(v.data());
         }
     }
+    parse_samsung_tag(std::span(o.service).first(o.service_len), o.samsung);
     output = o;
     return true;
 }

@@ -17,7 +17,254 @@ static unsigned checks;
         }                                                                                          \
     } while (false)
 
+void visible_airtag_target_tests() {
+    for (bool portrait : {false, true}) {
+        Settings s;
+        s.onboarded = true;
+        s.portrait = portrait;
+        Pet pet;
+        ui::View v(s, pet);
+        v.identity_key[0] = 17;
+        v.screen = ui::Screen::Home;
+        v.scanning = true;
+        Engine engine(production_rules);
+        auto sighting = [&](uint8_t id, uint64_t ms) {
+            Observation o{};
+            o.ms = v.now = ms;
+            o.address = {0xC2, 1, 2, 3, 4, id};
+            o.address_type = 1;
+            o.rssi = -45;
+            std::array<uint8_t, 31> ad{30, 0xff, 0x4c, 0, 0x12, 0x19};
+            ad[7] = id;
+            CHECK(parse_ble(ad, o));
+            std::array<Detection, 4> found{};
+            CHECK(engine.ingest(o, s, found) == 1);
+            CHECK(found[0].category == Category::AIRTAG && found[0].score == 75);
+            v.event(found[0]);
+            return found[0];
+        };
+        const auto seen = sighting(1, 1000);
+        std::vector<uint16_t> tile(v.width() * v.tile_rows());
+        for (int y = 0; y < v.height(); y += v.tile_rows())
+            v.render(y, tile);
+        // Production processes received radio events before the next touch, so the
+        // backing alert can change while the previously drawn card is still visible.
+        const auto later = sighting(2, 1200);
+        CHECK(v.identity(seen) != v.identity(later));
+        v.tap(portrait ? 190 : 320, portrait ? 375 : 198);
+        CHECK(v.screen == ui::Screen::AlertActions);
+        CHECK(v.identity(v.action_detection) == v.identity(seen));
+        v.now += 200;
+        v.event(later); // Another arrival while the frozen action menu is open.
+        for (int y = 0; y < v.height(); y += v.tile_rows())
+            v.render(y, tile);
+        CHECK(v.displayed_identity == v.identity(seen) && !v.displayed_ignored);
+        v.tap(30, (portrait ? 80 : 66) + 3 * (portrait ? 55 : 34) + 12);
+        CHECK(v.is_ignored(seen) && !v.is_ignored(later));
+        // The unrelated current alert remains eligible. Repeated packets from the
+        // ignored Apple identity stay quiet without hiding other Find My signals.
+        CHECK(v.alert_until > v.now && v.alert_allowed(later));
+        v.alert_until = 0;
+        for (unsigned cycle = 1; cycle <= 120; ++cycle) {
+            auto repeat = sighting(1, 1000 + cycle * 30000);
+            CHECK(v.is_ignored(repeat) && !v.alert_until);
+        }
+        CHECK(v.companion.ignored_count() == 1);
+        auto other = sighting(2, v.now + 200);
+        CHECK(!v.is_ignored(other) && v.alert_until > v.now);
+        CHECK(engine.recent_counts(v.now, s)[1] == 2);
+        // Reopening an ignored sighting reports that exact saved state.
+        v.open_actions(seen);
+        for (int y = 0; y < v.height(); y += v.tile_rows())
+            v.render(y, tile);
+        CHECK(v.displayed_ignored && v.displayed_identity == v.identity(seen));
+        // Save/reload preserves the Apple ignore without depending on SD.
+        ui::View reloaded(s, pet);
+        reloaded.identity_key = v.identity_key;
+        reloaded.companion = v.companion;
+        reloaded.now = v.now + 30000;
+        reloaded.event(seen);
+        CHECK(reloaded.is_ignored(seen) && !reloaded.alert_until);
+        reloaded.event(other);
+        CHECK(reloaded.alert_until > reloaded.now);
+        // A changed address or address type remains a distinct current identity.
+        auto changed = seen;
+        changed.address_type = 0;
+        CHECK(!reloaded.is_ignored(changed));
+        changed = seen;
+        changed.address.back() = 3;
+        CHECK(!reloaded.is_ignored(changed));
+        changed = seen;
+        changed.demo = true;
+        CHECK(!reloaded.is_ignored(changed));
+        // Expiring/replacing the backing alert cannot retarget the still visible button.
+        v.screen = ui::Screen::Home;
+        v.event(other);
+        for (int y = 0; y < v.height(); y += v.tile_rows())
+            v.render(y, tile);
+        const auto shown_code = v.displayed_identity;
+        v.now += 6000;
+        changed = other;
+        changed.address.back() = 4;
+        v.event(changed);
+        v.tap(portrait ? 190 : 320, portrait ? 375 : 198);
+        CHECK(v.screen == ui::Screen::AlertActions);
+        CHECK(v.identity(v.action_detection) == shown_code);
+        // After a frame with no card, no invisible Ignore button is active.
+        v.screen = ui::Screen::Home;
+        v.alert_until = 0;
+        for (int y = 0; y < v.height(); y += v.tile_rows())
+            v.render(y, tile);
+        v.event(changed);
+        v.tap(portrait ? 190 : 320, portrait ? 375 : 198);
+        CHECK(v.screen == ui::Screen::Home);
+    }
+}
+
+void ignore_rearrival_tests() {
+    for (bool portrait : {false, true}) {
+        Settings settings;
+        settings.onboarded = true;
+        settings.portrait = portrait;
+        Pet pet;
+        ui::View view(settings, pet);
+        view.identity_key[0] = 17;
+        view.now = 1000;
+        view.scanning = true;
+        view.screen = ui::Screen::Home;
+        Detection tag{};
+        tag.category = Category::SAMSUNG_TAG;
+        tag.radio = Radio::Ble;
+        tag.address_type = 1;
+        tag.address = {0xC2, 1, 2, 3, 4, 5};
+        tag.score = 60;
+        tag.meal = true;
+        const int ignore_y = (portrait ? 80 : 66) + 3 * (portrait ? 55 : 34) + 12;
+        // A repeat can arrive while Quiet Alerts is open and arm an unseen Home card.
+        view.event(tag);
+        view.open_actions(tag);
+        view.now += 30000;
+        view.event(tag);
+        CHECK(view.alert_until > view.now);
+        view.tap(30, ignore_y);
+        CHECK(view.companion.ignored_count() == 1);
+        CHECK(view.alert_until == 0); // Ignore must remove the already-pending card too.
+        CHECK(view.meal_until > view.now);
+        CHECK(!view.tag_watch.armed); // Ordinary alerts, without Travel Watch.
+        const auto observations = view.companion.scents[size_t(tag.category)].observations;
+        for (int i = 0; i < 40; ++i) {
+            view.now += 30000;
+            tag.last_ms = view.now;
+            tag.seen_count++;
+            tag.rssi_max = int8_t(-40 - i);
+            view.event(tag);
+            CHECK(!view.alert_until && !view.alert_allowed(tag));
+        }
+        CHECK(view.companion.ignored_count() == 1);
+        CHECK(view.companion.scents[size_t(tag.category)].observations == observations + 40);
+        // A different tag can still alert, including one that arrives during Ignore.
+        auto other = tag;
+        other.address.back()++;
+        view.open_actions(tag);
+        view.event(other);
+        view.tap(30, ignore_y);
+        CHECK(view.alert_until > view.now && view.alert_allowed(other));
+        CHECK(view.companion.ignored_count() == 1);
+        // Re-ignoring the selected identity is idempotent, and clears its stale card.
+        view.open_actions(tag);
+        view.alert_detection = tag;
+        view.alert_until = view.now + 5000;
+        view.tap(30, ignore_y);
+        CHECK(!view.alert_until && view.companion.ignored_count() == 1);
+        // Both tags stay quiet after separate ignores; log/meal processing continues.
+        view.open_actions(other);
+        view.event(other);
+        view.tap(30, ignore_y);
+        CHECK(!view.alert_until && view.companion.ignored_count() == 2);
+        for (int i = 0; i < 40; ++i) {
+            view.now += 30000;
+            view.event(tag);
+            view.event(other);
+            CHECK(!view.alert_until && view.meal_until > view.now);
+        }
+    }
+}
+
+void ignore_identity_lifetime_tests() {
+    for (bool portrait : {false, true}) {
+        Settings s;
+        s.onboarded = true;
+        s.portrait = portrait;
+        Pet pet;
+        ui::View v(s, pet);
+        v.identity_key[0] = 17;
+        v.scanning = true;
+        Engine engine(production_rules);
+        std::array<Address, 2> addresses{{{0xC2, 1, 2, 3, 4, 5}, {0xC2, 1, 2, 3, 4, 6}}};
+        auto sighting = [&](Address address, uint64_t ms) {
+            Observation o{};
+            o.ms = v.now = ms;
+            o.address = address;
+            o.address_type = 1;
+            o.rssi = -45;
+            constexpr uint8_t ad[] = {2, 1, 6, 3, 3, 0x5a, 0xfd};
+            CHECK(parse_ble(ad, o));
+            std::array<Detection, 4> found{};
+            CHECK(engine.ingest(o, s, found) == 1);
+            CHECK(found[0].category == Category::SAMSUNG_TAG && found[0].score == 60);
+            v.event(found[0]);
+            return found[0];
+        };
+        for (unsigned i = 0; i < addresses.size(); ++i) {
+            auto d = sighting(addresses[i], 1000 + i * 200);
+            v.open_actions(d);
+            v.tap(30, (portrait ? 80 : 66) + 3 * (portrait ? 55 : 34) + 12);
+            CHECK(v.companion.is_ignored(v.identity(d)) && !v.alert_until);
+        }
+        // Ignore has no uptime expiry, even when the classifier's evidence ages out.
+        for (unsigned hour = 1; hour <= 24; ++hour) {
+            for (unsigned i = 0; i < addresses.size(); ++i) {
+                sighting(addresses[i], uint64_t(hour) * 3600000 + i * 200);
+                CHECK(!v.alert_until && !v.tag_watch.armed);
+            }
+            CHECK(engine.recent_counts(v.now, s)[1] == 2);
+        }
+        // Two new addresses can produce alerts while the visible total remains two.
+        const auto changed_at = v.now + 91000;
+        for (unsigned i = 0; i < addresses.size(); ++i) {
+            addresses[i].back() += 16;
+            auto d = sighting(addresses[i], changed_at + i * 200);
+            CHECK(!v.companion.is_ignored(v.identity(d)) && v.alert_until > v.now);
+        }
+        CHECK(engine.recent_counts(v.now, s)[1] == 2);
+        CHECK(v.companion.ignored_count() == 2);
+        // The existing category toggle covers new addresses, but also excludes Watch.
+        v.screen = ui::Screen::Alerts;
+        v.alert_page = unsigned(Category::SAMSUNG_TAG) / 4;
+        v.tap(30, (portrait ? 80 : 64) + 3 * (portrait ? 68 : 43) + 12);
+        CHECK(!(s.alert_categories & (1U << unsigned(Category::SAMSUNG_TAG))));
+        CHECK(s.enabled_categories & (1U << unsigned(Category::SAMSUNG_TAG)));
+        CHECK(!v.alert_until && (v.requests & ui::Save));
+        v.tag_watch.start(v.now, false);
+        const auto observations = v.companion.scents[size_t(Category::SAMSUNG_TAG)].observations;
+        const auto watch_start = v.now;
+        for (unsigned minute = 1; minute <= 12; ++minute) {
+            for (unsigned i = 0; i < addresses.size(); ++i)
+                sighting(addresses[i], watch_start + minute * 60000 + i * 200);
+            CHECK(!v.alert_until && !v.watch_warning() && !v.watch_count());
+            CHECK(engine.recent_counts(v.now, s)[1] == 2);
+        }
+        CHECK(v.companion.scents[size_t(Category::SAMSUNG_TAG)].observations == observations + 24);
+        auto unrelated = v.recent[0];
+        unrelated.category = Category::AIRTAG;
+        CHECK(v.alert_allowed(unrelated));
+    }
+}
+
 int main() {
+    visible_airtag_target_tests();
+    ignore_rearrival_tests();
+    ignore_identity_lifetime_tests();
     for (bool portrait : {false, true}) {
         Settings s;
         s.onboarded = true;
@@ -194,7 +441,8 @@ int main() {
     for (unsigned i = 1; i <= c.ignored.size(); ++i)
         CHECK(c.ignore(i, Category::FLOCK));
     CHECK(c.ignore(1, Category::FLOCK));
-    CHECK(!c.ignore(999, Category::AXON) && c.ignored_count() == 16 && c.is_ignored(1));
+    CHECK(!c.ignore(999, Category::AXON) && c.ignored_count() == ignore_capacity &&
+          c.is_ignored(1));
     CHECK(!c.ignore(0, Category::FLOCK));
     CHECK(valid_companion(c));
     c.equipped = 5;
@@ -203,6 +451,50 @@ int main() {
     CHECK(valid_companion(c));
     c.ignored[1] = c.ignored[0];
     CHECK(!valid_companion(c));
+    // The expanded list is paged over occupied slots, including the last slot;
+    // removing its only row returns to the preceding page rather than stranding it.
+    for (bool portrait : {false, true}) {
+        Settings settings;
+        settings.onboarded = true;
+        settings.portrait = portrait;
+        Pet pet;
+        ui::View view(settings, pet);
+        view.screen = ui::Screen::Ignored;
+        for (unsigned i = 1; i <= ignore_capacity; ++i)
+            CHECK(view.companion.ignore(i, Category::AIRTAG));
+        CHECK(view.ignored_pages() == 16 && view.ignored_slot(63) == 63);
+        view.ignored_page = 15;
+        for (unsigned i = 0; i < 4; ++i)
+            view.tap(20, portrait ? 90 : 70);
+        CHECK(view.companion.ignored_count() == 60 && view.ignored_page == 14);
+        CHECK(view.ignored_slot(60) == ignore_capacity);
+        view.tap(view.width() - 50, view.height() - 30);
+        CHECK(view.screen == ui::Screen::IgnoreBackup);
+        view.requests = 0;
+        view.tap(20, portrait ? 90 : 70);
+        CHECK(view.requests & ui::BackupIgnores);
+        CHECK(view.backup_pending);
+        view.backup_queued(false);
+        CHECK(std::string_view(view.notice.data()) == "BACKUP PENDING / AUTO RETRY");
+        view.requests = 0;
+        view.tap(20, portrait ? 90 : 70);
+        CHECK(!view.requests); // Repeated taps cannot fill both snapshot slots.
+        view.ignore_backup = IgnoreBackupStatus::Checking;
+        view.backup_progress(0);
+        CHECK(view.backup_pending);
+        view.ignore_backup = IgnoreBackupStatus::Saved;
+        view.backup_progress(1);
+        CHECK(!view.backup_pending && std::string_view(view.notice.data()) == "SD BACKUP SAVED");
+        view.sd = true;
+        view.sd_checking = true;
+        view.request_export();
+        CHECK(view.export_status == ui::ExportStatus::Checking && !view.requests);
+        view.requests = 0;
+        view.demo = true;
+        view.tap(20, portrait ? 90 : 70);
+        CHECK(!view.requests);
+        CHECK(std::string_view(view.ignore_backup_message()) == "DEMO / NO SD WRITES");
+    }
     storage::StateV2 legacy;
     legacy.meal_key[0] = 1;
     legacy.pet.xp = 320;

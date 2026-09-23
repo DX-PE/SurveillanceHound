@@ -3,6 +3,8 @@
 #include "sniffer/json.hpp"
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     sniffer::Observation o{};
+    sniffer::SamsungTag samsung{};
+    sniffer::parse_samsung_tag({data, size}, samsung);
     sniffer::RemoteId rid{};
     sniffer::parse_wifi({data, size}, o);
     sniffer::parse_ble({data, size}, o);

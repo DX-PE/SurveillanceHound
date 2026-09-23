@@ -25,6 +25,7 @@ bool touch(Point &raw);
 Point map(Point raw, const Calibration &);
 bool calibrate(const Point raw[3], const Point screen[3], Calibration &result);
 void brightness(unsigned percent);
+void display_power(bool on);
 bool button();
 void led(bool r, bool g, bool b);
 int battery_raw();

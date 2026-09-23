@@ -47,13 +47,32 @@ bool sha256(std::span<const uint8_t> input, std::span<uint8_t, 32> out) {
            n == 32;
 #endif
 }
+namespace {
+// Different length and domain from legacy MAC hashes; no raw broadcast ID is persisted.
+std::array<uint8_t, 13> samsung_input(const Detection &d, uint8_t purpose) {
+    std::array<uint8_t, 13> input{'S', 'H', 1, purpose, uint8_t(Category::SAMSUNG_TAG)};
+    std::copy(d.samsung.id.begin(), d.samsung.id.end(), input.begin() + 5);
+    return input;
+}
+uint64_t digest_hash(std::span<const uint8_t> key, std::span<const uint8_t> input) {
+    std::array<uint8_t, 32> digest{};
+    if (!hmac_sha256(key, input, digest))
+        return 0;
+    uint64_t value = 0;
+    for (size_t i = 0; i < 8; ++i)
+        value = (value << 8) | digest[i];
+    return value ? value : 1;
+}
+} // namespace
 bool private_token(std::span<const uint8_t> key, const Detection &d, std::span<char, 21> out) {
     std::array<uint8_t, 8> input{};
     std::copy(d.address.begin(), d.address.end(), input.begin());
     input[6] = static_cast<uint8_t>(d.radio);
     input[7] = d.address_type;
     std::array<uint8_t, 32> digest{};
-    if (!hmac_sha256(key, input, digest)) {
+    const auto samsung = samsung_input(d, 1);
+    if (!hmac_sha256(key, samsung_identity(d) ? std::span<const uint8_t>(samsung) : input,
+                     digest)) {
         out[0] = 0;
         return false;
     }
@@ -74,19 +93,16 @@ bool private_token(std::span<const uint8_t> key, const Detection &d, std::span<c
     out[n] = 0;
     return true;
 }
-uint64_t meal_hash(std::span<const uint8_t> key, const Detection &d) {
+uint64_t address_hash(std::span<const uint8_t> key, const Detection &d) {
     // Deliberately independent of the matched rule set: adding evidence cannot farm a new meal.
     std::array<uint8_t, 9> input{};
     std::copy(d.address.begin(), d.address.end(), input.begin());
     input[6] = static_cast<uint8_t>(d.radio);
     input[7] = d.address_type;
     input[8] = static_cast<uint8_t>(d.category);
-    std::array<uint8_t, 32> digest{};
-    if (!hmac_sha256(key, input, digest))
-        return 0;
-    uint64_t value = 0;
-    for (size_t i = 0; i < 8; ++i)
-        value = (value << 8) | digest[i];
-    return value ? value : 1;
+    return digest_hash(key, input);
+}
+uint64_t meal_hash(std::span<const uint8_t> key, const Detection &d) {
+    return samsung_identity(d) ? digest_hash(key, samsung_input(d, 2)) : address_hash(key, d);
 }
 } // namespace sniffer

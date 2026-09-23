@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Surveillance Hound
 
-An offline ESP32 radio-observation pet for the **LCDWiki E32R40T**: six dogs, passive Wi-Fi/Bluetooth clues, and local logs. This is a **0.1.0 development build**. The ESP32-C3 radio test has passed; the display board's physical acceptance tests remain pending.
+An offline ESP32 radio-observation pet for the **LCDWiki E32R40T**: six dogs, passive Wi-Fi/Bluetooth clues, and local logs. This is a **0.1.0 development build**. ESP32-C3 radio testing and initial Hosyond display/SD checks have passed; broader hardware acceptance and the latest AirTag Ignore retest remain open. See [development status](docs/STATUS.md).
 
 ![Firmware UI rendered on the host](docs/ui-preview.png)
 
@@ -13,7 +13,9 @@ The application uses passive Wi-Fi management reception and passive legacy BLE s
 
 - **Six original dogs:** Corgi, Beagle, Shiba, Husky, Labrador and Dalmatian, with 33 animation frames each, naming, pet progress, touch reactions and level-up celebrations.
 - **Landscape by default:** 480 × 320, with a 320 × 480 portrait layout and persistent rotation lock. Rotation is manual; the board has no orientation sensor.
+- **Bouncing hound screen saver:** selected dog and outfit follow a DVD-style diagonal bounce on black. Defaults: dim after 2 idle minutes, saver after 5, display/backlight off after 15. Each timeout supports Never or 1/2/5/10/15/30/60 minutes. Travel Watch always blocks screen-off. Touch/BOOT reset the idle timer; ordinary alerts briefly wake the display for up to 5 seconds, at most once every 30 seconds, without resetting that timer. Active following warnings stay visible. Sniffing/logging continue throughout.
 - **Start/Stop sniffing:** the home-screen button pauses reception and puts the hound to sleep with floating Zs. Start wakes the hound and resumes reception. Both button labels fit within the display.
+- **Hound care:** fullness and mood decline between meals; hungry or sad dogs slow down and cry, then recover with happy hops after an earned snack.
 - **Snacks for all 19 categories:** the hound turns sideways, walks up, takes progressive bites and finishes happy. Reduced-animation mode is available.
 - **67 enabled rules:** Flock, Axon, glasses, skimmer modules, Raven, Apple Find My/AirTag, Tile, Samsung Tag, Google Tag, Drone, ALPR, Camera, Ring, iBeacon, Flipper, Pwnagotchi, Pineapple, deauth bursts and possible evil twins. Vendor, name and generic-service clues retain conservative confidence limits; see [detection coverage and limitations](docs/DETECTIONS.md).
 - **Bounded detection:** 128-entry observation and meal caches, confidence fusion, cooldowns, probe-request parsing, 128-bit BLE UUIDs, structured uncompressed Pwnagotchi advertisements, legacy Remote ID assembly and corroborated Wi-Fi security differences.
@@ -22,7 +24,7 @@ The application uses passive Wi-Fi management reception and passive legacy BLE s
 - **Atmosphere:** Midnight, Sunset and Daylight themes; Signal Grid, Dog Park and Rooftops scenes; optional speech bubbles, varied petting reactions and a compact patrol panel. Reduced animation stays available.
 - **Scent Book:** illustrated field-guide cards for all 19 categories, persistent observation totals, confidence and manual first/last times, plus recent matching evidence.
 - **Dog wardrobe:** five original accessories alongside the classic look, with previews, XP/discovery unlocks and saved equipment for every dog.
-- **Snooze/Ignore:** 5/15/60-minute global alert snooze, early resume, and 16 saved device/category ignores with individual removal. Pop-ups and sounds are quieted; logs, meals and discoveries continue.
+- **Snooze/Ignore:** 5/15/60-minute global alert snooze, early resume, and 64 saved device/category ignores with individual removal. Pop-ups and sounds are quieted; logs, meals and discoveries continue.
 - **Local storage and privacy:** private HMAC identifiers by default, opt-in raw local MAC logging, rotated JSONL, complete-row validation, incomplete-tail recovery, corrupt-log write lockout, full-history export and confirmed log deletion.
 - **Device settings:** manual UTC, three-point battery calibration, optional voltage/estimated percentage, critical save/flush/sleep, brightness, saved panel inversion and muted-by-default audio effects.
 - **Diagnostics:** per-radio accepted/malformed counts, queue drops, task watermarks, heap, SD space, raw ADC and display/touch self-test.
@@ -44,7 +46,7 @@ python3 tools/run_local.py
 
 Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/). The script builds the native firmware UI and serves it on loopback. Click the device screen, choose a hound, try onboarding, or use the sample selector to preview any category's snack. Start sniffing before sending samples if the hound is asleep.
 
-The browser preview uses **synthetic events and RAM-only state**, even when a C3 is connected over USB. It does not display live USB radio data, write SD logs or award saved XP. Demo samples fill a separate Scent Book and award session-only wardrobe XP. Repeating a sample category uses the same synthetic device, so Ignore can be tested. Restarting the simulator resets the session. Press Ctrl+C to stop, or use `--port 8766` for another port.
+The browser preview uses **synthetic events and RAM-only state**, even when a C3 is connected over USB. It does not display live USB radio data, write SD logs or award saved XP. Demo samples fill a separate Scent Book and award session-only wardrobe XP. Repeating a sample category uses the same synthetic device, so Ignore can be tested. Restarting the simulator resets the session. A subtle light rim keeps dark ears and tails visible in Midnight/Sunset and on the black saver, without changing fur colors; Daylight keeps its original outline. The Bouncing hound panel previews the saver and advances the virtual clock to test idle timeouts. Press Ctrl+C to stop, or use `--port 8766` for another port.
 
 | Control | Behavior |
 |---|---|
@@ -56,7 +58,8 @@ The browser preview uses **synthetic events and RAM-only state**, even when a C3
 | Home → hound name / Settings → Dog wardrobe | Preview accessories, see requirements and equip unlocked gear |
 | Alert or Log → details → Snooze / Ignore | Quiet all alerts for 5/15/60 minutes or ignore the selected device/category |
 | Settings → first page | Manage ignored scents, resume alerts, open Scent Book, wardrobe or Atmosphere |
-| Settings → More: Display → Display options | Brightness, immediate saved Panel inversion toggle, animation and color/touch test |
+| Settings → More: Display → Display options | Brightness, immediate saved Panel inversion toggle, animation, color/touch test and screen saver |
+| Settings → More: Display → Display options → Screen saver / Timeouts | Configure independent idle timeouts or preview your bouncing hound; first waking touch only wakes |
 | Log → sighting → Follow Scent | Follow reception from that radio identity; Home → Follow returns to it |
 | Settings → Atmosphere | Cycle theme, background, speech frequency and compact panel |
 | Settings → Tools (page 6) | Set UTC, calibrate battery, clear SD logs, run self-test or export history |
@@ -72,7 +75,7 @@ idf.py build
 ./tools/flash.sh /dev/ttyUSB0
 ```
 
-Replace the serial port with the display board's port. See [BUILDING](docs/BUILDING.md) for SDK installation, the four profiles, Docker, and development packaging. Start bring-up on USB power. The connected Hosyond displays Hound with correct colors after disabling inversion. Full touch, SD/NVS durability, audio and battery validation remain open; SD testing is on hold.
+Replace the serial port with the display board's port. See [BUILDING](docs/BUILDING.md) for SDK installation, the four profiles, Docker, and development packaging. Start bring-up on USB power. The connected Hosyond displays Hound with correct colors after disabling inversion. A 32 GB microSD mounts with SD OK; the user has confirmed a 581-record export, SAFE TO REMOVE, and SD OK with the saved outfit after power-off/card reinsertion/reboot. Private NVS readback also confirmed retained settings/calibration/outfit/ignores and newly saved progress. Independent exported-file validation is deferred until a card reader is available. Full touch, SD/NVS durability, audio and battery validation remain open.
 
 ## Test an ESP32-C3 Super Mini
 
@@ -107,9 +110,13 @@ In a ptrace-based sandbox, LeakSanitizer may require `ASAN_OPTIONS=detect_leaks=
 
 ## Export and saved state
 
-**Settings → Export history** streams validated stored events from the SD card, retaining repeated updates, with a 4,096-file safety bound. It rekeys session IDs and observation identifiers and writes a checksum manifest only for a completed export.
+**Settings → Data → Export history** (also available under Tools) streams validated stored events from the SD card, retaining repeated updates, with a 4,096-file safety bound. It rekeys session IDs and observation identifiers and writes a checksum manifest only for a completed export. The button shows **EXPORTING...**, then **COMPLETE: N RECORDS**, or a visible error. Repeated taps are ignored while the export is pending. Demo reports that no files were saved.
 
-For an aggregated historical export, eject the card in Settings and run:
+If the storage queue is temporarily busy, settings/progress saves retry with the latest state after one second. **SAVE WAITING / RETRYING** clears when a save is accepted into the queue; that is not a separate confirmation of NVS durability.
+
+**Settings → Data → Eject SD** shows **EJECTING...**, then **SAFE TO REMOVE** (and **SD SAFE** in the top bar) after the worker flushes, syncs and closes the log. A close failure shows **FAILED / POWER OFF**; a busy queue shows **BUSY / TAP TO RETRY**. Safe removal confirms the card is no longer being accessed, not that all earlier writes succeeded. Power off before reinserting; cards mount at startup. Diagnostics page 3 shows **NVS SAVES** and **NVS ERRORS** for completed progress/settings saves in this boot; queue acceptance alone is not proof of a saved state.
+
+For an aggregated historical export, safely eject the card in Settings, connect it to a computer reader, and run:
 
 ```sh
 python3 tools/export_logs.py /media/CARD/SURVSNIFF/LOGS ./community-export
@@ -119,6 +126,14 @@ python3 tools/validate_export.py ./community-export
 Nothing is uploaded. Raw MACs, SSIDs, payloads and Remote ID serials/coordinates are excluded from sanitized exports. The device collects no GPS location. See [privacy](docs/PRIVACY.md) and [export format](docs/COMMUNITY_EXPORT.md).
 
 Version 1, 2, 3 and 4 saves migrate to version 5, preserving pet progress, privacy settings, recent meals and touch calibration. Old cat selection slots become Husky, Labrador and Dalmatian. Settings, pet, system, companion and appearance state use CRC-protected generation slots in separate NVS namespaces. V4 and V5 commits require the companion record; V5 also requires the appearance record. Interrupted or corrupt state never silently discards ignores or preferences. Older saves start with Midnight / Signal Grid / occasional speech / detailed panel. The appearance record upgrades from version 1 to version 2 without changing the V5 generation scheme; existing theme/scene/speech/panel preferences are retained and inversion defaults off. Simulator state is not persisted.
+
+## Hunger, mood and happy hops
+
+Every five powered-on minutes without an earned meal lowers fullness by **3** and mood by **2**, down to zero. A meal restarts that timer. Power-off time is not counted; stopping sniffing shows the sleeping hound while needs continue to decay. At **25 or below** in either stat, the hound has droopy eyes, animated tears and a slow head movement instead of its usual patrol. Low bars turn amber.
+
+Meals add fullness/mood by confidence: **20/15** for high, **14/12** for medium and **6/6** for enabled low-confidence feeding. An earned meal lifts critical needs to at least **35 fullness / 40 mood**, capped at 100, so one snack can cheer the hound up. The existing identity/category/global meal cooldowns and XP rules still apply; an ordinary repeated alert does not feed the dog. Petting adds 2 mood without filling its belly.
+
+The eating sequence ends in happy hops for about four seconds. Reduced animation uses still sad/happy poses without jumping; Stop keeps the sleeping Zs. Demo hunger and mood are separate from saved progress. In the local lab, use **Care for your hound → Hungry hound / Low mood**, then send a Flipper or Pineapple snack. **Wait 30 minutes** advances the simulator clock and applies real decay rules without changing hardware settings.
 
 ## Scent Book, outfits and quiet alerts
 
@@ -133,13 +148,23 @@ Scent Book counts emitted observations, including repeat updates, rather than un
 | Detective cap | 300 XP |
 | Sunglasses | Discover 10 categories |
 
-Unlocks stay earned until **Reset progress**, which also clears the Scent Book and equipped outfit. Reset keeps observation logs and ignored devices. Snooze uses powered-on time, expires automatically, and resets on reboot. Stop/Start does not cancel snooze; Settings offers early resume. Ignore persists a keyed digest for the selected device and category, never a raw address. Rotating/changing addresses can alert again; unrelated devices in that category remain eligible. The 16-entry list never silently evicts an entry when full.
+Unlocks stay earned until **Reset progress**, which also clears the Scent Book and equipped outfit. Reset keeps observation logs and ignored devices. Snooze uses powered-on time, expires automatically, and resets on reboot. Stop/Start does not cancel snooze; Settings offers early resume. Ignore persists a keyed digest for the selected device and category, never a raw address. A changed identity can alert again; unrelated devices in that category remain eligible. Supported Samsung tags use their broadcast identifier, which can survive a MAC-address change. The 64-entry list never silently evicts an entry when full. Ignoring also clears any pending alert for that identity, including a repeat received while the Quiet Alerts or Tag Watch review screen is open; an unrelated eligible alert remains visible.
+
+Home's **Snooze / Ignore** targets the last displayed alert, even if another radio event arrives before the tap is processed. The alert and its action menu show the same short, board-local **ID**; the menu says **ALREADY IGNORED** for a saved identity. **Log → AirTag sighting → More** shows the current ID and Ignore status. The AirTag category is a Find My protocol clue and can include other devices. Ignored sightings still contribute to the recent-signal count and logs, so ignoring a signal does not reduce the Likely total. The displayed eight-digit code is a comparison aid, not a permanent physical-device identifier; full keyed identities still control matching.
+
+For Samsung tags, supported FD5A advertisements expose an eight-byte broadcast ID and a reported connection state. Hound uses that ID for Ignore, recent counts, feeding cooldowns, Follow Scent and Travel Watch, so a MAC-address change alone does not create a new identity. **Owner-connected reports are quiet** for ordinary alerts, sounds and Travel Watch; sightings remain counted and logged. Offline, unknown and unsupported formats retain normal alert eligibility. **Log → Samsung sighting → More** shows the reported state, identity basis and Ignore status.
+
+**Settings → Ignored scents** shows used/free capacity and pages only occupied entries. Existing 16-slot saves migrate automatically, preserving every entry, Scent Book and outfit. Ignores stay in internal storage and work without an SD card. With a writable card, Hound automatically keeps two authenticated backup generations under `/SURVSNIFF/IGNORES/`; **SD backup** shows status and lets you retry. Startup shows **SD CHECK** with checked-record/file progress while validating history. Internal saves and safe eject remain responsive; the newest ignore list is backed up when the check finishes. A busy backup request retries automatically, and repeated taps do not add more requests. Backups contain keyed identities, never raw addresses or the identity key. They do not expand the 64-entry live limit or automatically restore over internal saves. Recovery currently requires a development utility using the original board key; an on-device restore control is not implemented. See [Ignore storage and SD backups](docs/IGNORE_STORAGE.md).
+
+Ignore has **no time-based expiry**, but the broadcast ID itself can rotate. Hound cannot reliably join different IDs using RSSI, timing or the number of nearby tags. Existing address-based ignores are retained; they cannot automatically cover an unknown broadcast ID on a new MAC. If an old entry no longer matches, use Ignore on the current sighting to save its broadcast ID. UUID-only/unsupported advertisements fall back to the radio address. See [Samsung identity and state handling](docs/SAMSUNG_TAGS.md) for supported formats, evidence and field checks.
+
+For category-wide quiet, use **Settings → Display page → Alert Types → page 2 → SAMSUNG_TAG: OFF**. Leave its detector enabled to retain counts and logs. This setting suppresses **all** Samsung-category pop-ups/sounds and **also excludes Samsung tags from Travel Watch**, including unfamiliar tags; re-enable it when those warnings are wanted. It is not an ownership allowlist, and Hound does not switch it off automatically when a device is ignored.
 
 All emulator-inspired ideas, selected work and future acceptance criteria are recorded in the [roadmap](docs/ROADMAP.md).
 
 ## Recent signals and quiet alerts
 
-The home **Strong / Likely** totals count distinct radio/address/type identities seen within the last **90 seconds**, using the highest current confidence when several categories match one identity. Repeated updates refresh that identity instead of adding another count. The totals reuse the 128-entry detection cache, refresh every two seconds, and expire while sniffing is stopped. They are recent signals, not a verified inventory of physical tags: address rotation can temporarily add an identity, and Apple Find My clues also occur on compatible products other than AirTags. Disabled detector categories are excluded. Sound mute, snooze and per-device Ignore silence alerts but do not hide observed signals; Scent Book and logs continue counting emitted observations. Demo samples never add to the real totals.
+The home **Strong / Likely** totals count distinct identities (a supported Samsung broadcast ID, otherwise radio/address/type) seen within the last **90 seconds**, using the highest current confidence when several categories match one identity. Repeated updates refresh that identity instead of adding another count. The totals reuse the 128-entry detection cache, refresh every two seconds, and expire while sniffing is stopped. They are recent signals, not a verified inventory of physical tags: a broadcast-ID change or an unsupported address rotation can temporarily add an identity, and Apple Find My clues also occur on compatible products other than AirTags. Disabled detector categories are excluded. Sound mute, snooze and per-device Ignore silence alerts but do not hide observed signals; Scent Book and logs continue counting emitted observations. Demo samples never add to the real totals.
 
 Home alerts always use a small card beside the dog in landscape or below it in portrait, including repeats that earn no meal. The dog animation, **Snooze / Ignore** and **Start / Stop sniffing** remain accessible. Eating starts only when a detection earns a meal; ordinary repeat tags have a 30-minute feeding cooldown, conservatively restored after reboot. Repeat alerts can therefore appear without another eating animation. For an immediate animation check, enable **Settings → Data → Demo mode** with sniffing running; synthetic Flipper/Pineapple meals occur every eight seconds without changing saved progress. Full evidence stays in the Log.
 
@@ -149,13 +174,13 @@ Home alerts always use a small card beside the dog in landscape or below it in p
 
 Tap **WATCH** on Home, or **TAG WATCH** on the first Settings page, then **Start Travel Watch** when heading out. It starts off after reboot. This is a repeated-presence heuristic: without GPS or motion input, Hound cannot confirm that a tag moved with you or identify its owner. Your own tags and stationary nearby tags can qualify. Apple Find My classifications also cover devices other than AirTags.
 
-AirTag/Find My, Samsung, Tile and Google tag classifications qualify only when the same keyed radio/address/type/category identity is seen over **at least ten minutes**, in **at least eight distinct one-minute intervals**, with **no gap over two minutes**. Only BLE sightings scoring at least 50 and passing the current confidence, detector and alert-category settings count. Generic iBeacon and weak Fast Pair clues do not qualify. Old engine timestamps and packet counts cannot accelerate the watch; time starts with the first eligible sighting after arming.
+AirTag/Find My, Samsung, Tile and Google tag classifications qualify only when the same keyed identity and category (Samsung broadcast ID when supported, otherwise radio/address/type) is seen over **at least ten minutes**, in **at least eight distinct one-minute intervals**, with **no gap over two minutes**. Only BLE sightings scoring at least 50 and passing the current confidence, detector and alert-category settings count. Generic iBeacon and weak Fast Pair clues do not qualify. Old engine timestamps and packet counts cannot accelerate the watch; time starts with the first eligible sighting after arming.
 
 Starting the watch opens **Watch progress**. While armed, the Home **WATCH** button returns to this page; **Controls** opens the watch options. Each row shows its category, a session slot number, classification score, observed time toward **10:00**, occupied minute bins toward **8**, and seconds since its last qualifying sighting. The timer advances on sightings rather than simply counting time since arming. Gap/filter reset counters explain discarded windows; clock skips record rejected future timestamps. New or rotating identities build separate rows. **Settings → Alerts: High** excludes the current Samsung (60) and Apple Find My (75) signatures; use **Med/High** when testing those families. Acknowledged entries show **ACK**.
 
 A qualifying tag shows **Possible following**, its category and observed duration in the compact Home card. The background alternates red/normal once every two seconds across regular screens, keeping the hound and controls visible. Tap **Review tag** or the top **Tag alert / Review** indicator. **Acknowledge** silences that identity while it remains present; **Ignore this tag** uses the existing saved ignore list; **Snooze** suppresses all alerts temporarily. Sound mute does not disable this visual warning. **Red warning: Steady**, or the existing **Animation: Reduced** setting, replaces flashing with steady red. Watch and flash choices are session-only; reduced animation and real-device ignores retain their existing persistence.
 
-Stop/Start sniffing clears the observation window. Ending the watch, rebooting, calibration or switching demo mode also clears it. Warnings clear after two minutes without an eligible sighting; repeated sightings must build a fresh window afterward. Sixteen keyed identities fit in a bounded RAM table, with no new NVS or SD records. A full table keeps existing present identities; it cannot cover every tag in a crowd. Rotating addresses remain separate, which can prevent a warning; Hound does not correlate them. This feature is not a substitute for phone unwanted-tracker alerts.
+Stop/Start sniffing clears the observation window. Ending the watch, rebooting, calibration or switching demo mode also clears it. Warnings clear after two minutes without an eligible sighting; repeated sightings must build a fresh window afterward. Sixteen keyed identities fit in a bounded RAM table, with no new NVS or SD records. A full table keeps existing present identities; it cannot cover every tag in a crowd. Different broadcast IDs remain separate, as do rotating addresses without a supported stable payload ID; these changes can prevent a warning. A Samsung owner-connected report removes that ID’s watch window, so subsequent offline sightings start a new window. This feature is not a substitute for phone unwanted-tracker alerts.
 
 In the local lab, use **Tag Watch → Preview red warning** and choose a tag. This sends synthetic sightings and advances the simulator clock by ten minutes using the same production rule. It changes no saved progress, creates no meals, and never injects real radio data. Disabled categories, confidence settings and ignored demo identities still apply. On the Hosyond board, the user confirmed that the possible-following alert triggered and the red background flashed with the dog and controls still visible. Controlled RF accuracy, timing and broader hardware acceptance checks remain pending.
 
@@ -169,7 +194,7 @@ Settings always opens on **Hound**, with **Wardrobe, Atmosphere, Scent Book, Ign
 
 Open **Log**, select a sighting and tap **Follow Scent**. Selection waits for a new, valid reading from the same address, address type and radio. Live reception is at most five seconds old; after five seconds it shows the last reading and waits for a repeat, and after 15 seconds it shows **Signal lost**. The 30-second graph uses one latest reading per second, leaves gaps between sparse readings, and fades as data ages out. Trend compares recent samples; the dog reacts to the current reception level. Walls, antennas, channel hopping and advertisement intervals affect RSSI, so neither the graph nor the dog gives direction or exact distance.
 
-**Back to Hound** keeps the selected scent; tap **Follow** to reopen it. **Stop following** clears it without stopping scanning. Stop/Start scanning keeps the target but clears readings, waiting for a fresh sample after resuming. Selecting a new scent or changing demo mode resets the follow session; reboot clears it. Address rotation requires a new selection. A disabled detector suspends updates for its selected category. Follow readings bypass alert throttling but do not independently add log entries, discoveries or meals.
+**Back to Hound** keeps the selected scent; tap **Follow** to reopen it. **Stop following** clears it without stopping scanning. Stop/Start scanning keeps the target but clears readings, waiting for a fresh sample after resuming. Selecting a new scent or changing demo mode resets the follow session; reboot clears it. A supported Samsung broadcast ID keeps the selection across MAC changes. A changed broadcast ID, or other address rotation, requires a new selection. A disabled detector suspends updates for its selected category. Follow readings bypass alert throttling but do not independently add log entries, discoveries or meals.
 
 In the browser, send a synthetic sighting first, select it through the device Log, and use **Follow a signal** below the device. Change reception, send one reading or enable **Repeat reading every second**. Disable repeat to test waiting/lost states. These readings are synthetic and do not use the USB board.
 
