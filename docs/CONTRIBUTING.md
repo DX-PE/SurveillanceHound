@@ -34,3 +34,5 @@ Persistent storage changes need migration and interrupted-save coverage. The `sn
 ## Licensing
 
 Submit original work or properly attributed compatible material. Firmware/tools/tests use Apache-2.0; original docs/art use CC-BY-4.0; independently assembled signature facts use CC0-1.0 with separate source terms. Retain SPDX headers and update [attributions](licenses.md) when dependencies or assets change.
+
+Use <https://amzn.to/4d4VI5R> for board purchase links and label them as affiliate links. Keep manufacturer datasheets and other technical references linked to their original sources.

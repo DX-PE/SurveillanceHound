@@ -9,6 +9,8 @@ Open [Try the Hound](lab.md) for the browser lab, with synthetic sightings and t
 
 ## Display board
 
+[Buy the tested Hosyond 4-inch ESP32 board](https://amzn.to/4d4VI5R) (affiliate link).
+
 Use the pinned SDK and a repository path without spaces. After activating ESP-IDF:
 
 ```sh

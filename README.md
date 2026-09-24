@@ -43,6 +43,8 @@ Open <http://127.0.0.1:8765/>. It runs the firmware UI with synthetic events and
 
 ## Hardware
 
+[Buy the tested Hosyond 4-inch ESP32 board](https://amzn.to/4d4VI5R) (affiliate link).
+
 The display target is the LCDWiki E32R40T / tested Hosyond 4-inch ESP32 board with ST7796 display and XPT2046 touch. Firmware uses **ESP-IDF 6.0.2**, pinned to `7101770dc6db2667b3c477cc31365dd1acd6db4e`.
 
 After activating the pinned SDK in a checkout without spaces:

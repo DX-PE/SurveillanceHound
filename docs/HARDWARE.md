@@ -1,6 +1,8 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Hardware bring-up
 
+[Buy the tested Hosyond 4-inch ESP32 board](https://amzn.to/4d4VI5R) (affiliate link).
+
 Target: LCDWiki E32R40T / Hosyond 4-inch ESP32-32E, 4 MB flash, ST7796 with 480x320 landscape default and 320x480 portrait option, XPT2046 touch. No PSRAM assumption.
 
 | Function | GPIO |
