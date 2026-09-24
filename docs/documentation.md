@@ -56,6 +56,7 @@ Tests cover meals, pause/resume, Ignore, Watch, idle dim/saver/off, all sample c
 | User guides and technical references | The corresponding Markdown file in `docs/` |
 | Site title, navigation and features | `zensical.toml` |
 | Theme and responsive tables | `docs/stylesheets/hound.css` |
+| External links in new tabs | `docs/javascripts/external-links.js` |
 | Accessible missing-page template | `docs-overrides/404.html` |
 | Header dog / six-dog illustration | `tools/docs_assets.py`, reusing `tools/pack_assets.py` and `assets/pets/characters.json` |
 | Dependency ledger | Root `THIRD_PARTY_LICENSES.md`, included by `docs/licenses.md` |

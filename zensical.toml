@@ -12,6 +12,7 @@ site_url = "https://surveillancehound.dx.pe/"
 repo_url = "https://github.com/DX-PE/SurveillanceHound"
 repo_name = "DX-PE/SurveillanceHound"
 extra_css = ["stylesheets/hound.css"]
+extra_javascript = ["javascripts/external-links.js"]
 nav = [
   { "Start" = [
     { "Welcome" = "index.md" },
