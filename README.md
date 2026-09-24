@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Surveillance Hound
 
-An offline ESP32 radio-observation companion: six pixel dogs, passive Wi-Fi/Bluetooth clues and local logs. **0.1.0 development build.** A match describes radio evidence, not intent or proof of surveillance.
+An offline ESP32 radio-observation companion: six pixel dogs, passive Wi-Fi/Bluetooth clues and local logs. **[v0.1.0-alpha.1 prerelease](https://github.com/DX-PE/SurveillanceHound/releases/tag/v0.1.0-alpha.1).** A match describes radio evidence, not intent or proof of surveillance.
 
 ![Surveillance Hound firmware UI](docs/ui-preview.png)
 
@@ -9,12 +9,13 @@ An offline ESP32 radio-observation companion: six pixel dogs, passive Wi-Fi/Blue
 
 Read the [documentation](https://surveillancehound.dx.pe/) or [try the Hound in your browser](https://surveillancehound.dx.pe/lab/). The site uses **Zensical**, Hound's Midnight colors and original pixel art.
 
-- [Try the Hound](docs/lab.md), [getting started](docs/getting-started.md) and [emulator guide](docs/simulator.md)
-- [Controls](docs/controls.md), [hound care](docs/hound-care.md) and [appearance](docs/appearance.md)
-- [Alerts and ignores](docs/alerts.md), [Travel Watch](docs/tag-watch.md) and [Follow Scent](docs/follow-scent.md)
-- [Detection coverage](docs/DETECTIONS.md), [storage](docs/storage.md) and [privacy](docs/PRIVACY.md)
-- [Build firmware](docs/BUILDING.md), [run tests](docs/testing.md) and [contribute](CONTRIBUTING.md)
-- [Development status](docs/STATUS.md), [roadmap](docs/ROADMAP.md) and [release gates](docs/RELEASE.md)
+- [Install from your browser](https://surveillancehound.dx.pe/flash/)
+- [Try the Hound](https://surveillancehound.dx.pe/lab/), [getting started](https://surveillancehound.dx.pe/getting-started/) and [emulator guide](https://surveillancehound.dx.pe/simulator/)
+- [Controls](https://surveillancehound.dx.pe/controls/), [hound care](https://surveillancehound.dx.pe/hound-care/) and [appearance](https://surveillancehound.dx.pe/appearance/)
+- [Alerts and ignores](https://surveillancehound.dx.pe/alerts/), [Travel Watch](https://surveillancehound.dx.pe/tag-watch/) and [Follow Scent](https://surveillancehound.dx.pe/follow-scent/)
+- [Detection coverage](https://surveillancehound.dx.pe/DETECTIONS/), [storage](https://surveillancehound.dx.pe/storage/) and [privacy](https://surveillancehound.dx.pe/PRIVACY/)
+- [Build firmware](https://surveillancehound.dx.pe/BUILDING/), [run tests](https://surveillancehound.dx.pe/testing/) and [contribute](https://surveillancehound.dx.pe/CONTRIBUTING/)
+- [Development status](https://surveillancehound.dx.pe/STATUS/), [roadmap](https://surveillancehound.dx.pe/ROADMAP/) and [release gates](https://surveillancehound.dx.pe/RELEASE/)
 
 Preview the complete documentation and browser lab locally (Docker supplies the pinned WebAssembly compiler):
 
@@ -23,10 +24,11 @@ python3 -m venv .venv-docs
 . .venv-docs/bin/activate
 python -m pip install -r requirements-docs.txt
 python tools/build_web.py --docker
+python tools/build_flasher.py
 zensical serve
 ```
 
-Open <http://127.0.0.1:8000/>. See [documentation development](docs/documentation.md) for the strict build and GitHub workflow.
+Open <http://127.0.0.1:8000/>. See [documentation development](https://surveillancehound.dx.pe/documentation/) for the strict build and GitHub workflow.
 
 ## Try the emulator
 
@@ -54,16 +56,18 @@ idf.py build
 ./tools/flash.sh /dev/ttyUSB0
 ```
 
-See [Building](docs/BUILDING.md) and [getting started](docs/getting-started.md) before flashing. An ESP32-C3 has a separate [radio-only harness](docs/C3_RADIO_TEST.md).
+Install the initial release with the [browser flasher](https://surveillancehound.dx.pe/flash/) (full installation resets saved board data), or build from source. Additional board support is coming soon.
+
+See [Building](https://surveillancehound.dx.pe/BUILDING/) and [getting started](https://surveillancehound.dx.pe/getting-started/) before flashing. An ESP32-C3 has a separate [radio-only harness](https://surveillancehound.dx.pe/C3_RADIO_TEST/).
 
 ## Status and scope
 
 67 rules cover 19 categories. Hound listens for selected 2.4 GHz Wi-Fi management frames and legacy BLE advertisements; it does not associate, probe, advertise, inject or upload. Quiet scans are not an all-clear, and Travel Watch detects repeated nearby presence without proving movement.
 
-Initial display/SD checks and host regressions are documented. Controlled RF accuracy, durability/power tests, formal soak and release/license acceptance remain open. The [status page](docs/STATUS.md) is the current summary; dated records preserve earlier evidence.
+Initial display/SD checks and host regressions are documented. Controlled RF accuracy, durability/power tests, formal soak and release/license acceptance remain open. The [status page](https://surveillancehound.dx.pe/STATUS/) is the current summary; dated records preserve earlier evidence.
 
 ## License
 
 Copyright 2026 Jascha Wanger ([https://dx.pe](https://dx.pe)).
 
-Firmware, tools and tests: Apache-2.0. Original docs/art: CC-BY-4.0. Independently assembled signature facts: CC0-1.0, with separate source terms. See [LICENSE](LICENSE), [NOTICE](NOTICE), [dependency ledger](THIRD_PARTY_LICENSES.md) and [provenance](data/provenance.yaml).
+Firmware, tools and tests: Apache-2.0. Original docs/art: CC-BY-4.0. Independently assembled signature facts: CC0-1.0, with separate source terms. See [LICENSE](LICENSE), [NOTICE](NOTICE), [dependency ledger](https://surveillancehound.dx.pe/licenses/) and [provenance](data/provenance.yaml).

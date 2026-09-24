@@ -33,6 +33,12 @@ jobs:
           node-version: '22'
       - name: Build browser lab
         run: python tools/build_web.py --docker
+      - name: Stage verified release firmware
+        run: |
+          python tools/build_flasher.py
+          python -m unittest discover -s tests/host -p test_flasher.py
+          node --check docs/javascripts/flasher.js
+          node --test tools/test_flasher.mjs
       - name: Compare browser and native behavior
         run: |
           cmake -S . -B build-host-web -G Ninja -DSNIFFER_HOST=ON -DSNIFFER_SANITIZE=OFF -DCMAKE_BUILD_TYPE=Debug
@@ -45,7 +51,9 @@ jobs:
       - name: Build the site
         run: zensical build --clean --strict
       - name: Check generated links and assets
-        run: python tools/check_docs.py --site site
+        run: |
+          python tools/check_docs.py --site site
+          python tools/build_flasher.py --check --output site/firmware
       - uses: actions/upload-artifact@v4
         with:
           name: hound-docs

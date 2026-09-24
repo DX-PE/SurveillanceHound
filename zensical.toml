@@ -17,6 +17,7 @@ nav = [
   { "Start" = [
     { "Welcome" = "index.md" },
     { "Getting started" = "getting-started.md" },
+    { "Install firmware" = "flash.md" },
     { "Try the Hound" = "lab.md" },
     { "Local emulator" = "simulator.md" },
     { "Features" = "features.md" },

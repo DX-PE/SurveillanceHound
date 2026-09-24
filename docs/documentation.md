@@ -12,6 +12,7 @@ python3 -m venv .venv-docs
 . .venv-docs/bin/activate
 python -m pip install -r requirements-docs.txt
 python tools/build_web.py --docker
+python tools/build_flasher.py
 zensical serve
 ```
 
@@ -23,10 +24,12 @@ Open <http://127.0.0.1:8000/lab/> for the embedded lab or <http://127.0.0.1:8000
 
 ```sh
 python3 tools/build_web.py --docker
+python3 tools/build_flasher.py
 python3 tools/docs_assets.py --check
 python3 tools/check_docs.py
 zensical build --clean --strict
 python3 tools/check_docs.py --site site
+python3 tools/build_flasher.py --check --output site/firmware
 ```
 
 `site/` is the static output. Preview an existing build with `python3 -m http.server 8000 --bind 127.0.0.1 --directory site`. Generated output, caches and the local environment are ignored by Git.
@@ -49,6 +52,16 @@ node tools/test_web.mjs
 
 Tests cover meals, pause/resume, Ignore, Watch, idle dim/saver/off, all sample categories, six dogs, both orientations, reset and independent sessions. Runtime license notices are included in `lab-app/LICENSES.txt`.
 
+## Browser firmware installer
+
+`tools/build_flasher.py` downloads the factory image named in `tools/firmware-release.json`, verifies its exact size and SHA-256, then stages `docs/firmware/` with an ESP Web Tools manifest and release metadata. These generated assets are ignored by Git. An existing image is verified before reuse; `--firmware-file /path/to/factory.bin` supports offline staging of a previously downloaded release. `--check --output site/firmware` verifies the final published bytes and manifest without downloading anything.
+
+Publish and verify the release first, then update the pinned metadata for a new version. Do not use a moving `latest` URL. Keep `docs/flash.md` and README release links in sync. The manifest accepts only the ESP32 family and selects a full factory image at offset zero. It disables Improv Wi-Fi setup and optional erase prompts; the page explicitly explains the reset and requires board/data acknowledgement before enabling USB connection. Chip matching cannot identify the display board model.
+
+The page loads the pinned ESP Web Tools 10.4.0 module from jsDelivr with entry-module SHA-384 integrity verification. Upstream module chunks load from the same pinned CDN package. Only the flasher page loads this dependency. Firmware itself is served from the documentation origin, avoiding GitHub release-download CORS requirements. If Web Serial, a secure context or the installer is unavailable, manual release downloads remain visible. This feature does not change the passive firmware or request a USB port on page load.
+
+Run `python -m unittest discover -s tests/host -p test_flasher.py`, `node --test tools/test_flasher.mjs`, and the final asset check when changing installation metadata. In a browser, check acknowledgement gating, manual fallback, layout and external links without opening or flashing a board unless hardware testing is intended.
+
 ## Where to edit
 
 | Content | Source |
@@ -56,6 +69,8 @@ Tests cover meals, pause/resume, Ignore, Watch, idle dim/saver/off, all sample c
 | User guides and technical references | The corresponding Markdown file in `docs/` |
 | Site title, navigation and features | `zensical.toml` |
 | Theme and responsive tables | `docs/stylesheets/hound.css` |
+| Browser firmware page and controller | `docs/flash.md`, `docs/javascripts/flasher.js` |
+| Released firmware pin and staging | `tools/firmware-release.json`, `tools/build_flasher.py` |
 | External links in new tabs | `docs/javascripts/external-links.js` |
 | Accessible missing-page template | `docs-overrides/404.html` |
 | Header dog / six-dog illustration | `tools/docs_assets.py`, reusing `tools/pack_assets.py` and `assets/pets/characters.json` |
@@ -76,7 +91,7 @@ python3 tools/docs_assets.py
 ## GitHub workflow
 
 
-`.github/workflows/docs.yml` builds the browser lab, checks native/browser parity, builds the documentation strictly, validates the resulting site, and uploads one `hound-docs` artifact on pushes, pull requests and manual dispatch.
+`.github/workflows/docs.yml` builds the browser lab, stages checksum-verified released firmware for the flasher, checks native/browser parity, builds the documentation strictly, validates the resulting site, and uploads one `hound-docs` artifact on pushes, pull requests and manual dispatch.
 
 Pushes to the default branch of [DX-PE/SurveillanceHound](https://github.com/DX-PE/SurveillanceHound) publish the checked artifact to GitHub Pages. Pull requests only build and test. The deployment job uses the `github-pages` environment and narrowly scoped Pages/OIDC permissions.
 

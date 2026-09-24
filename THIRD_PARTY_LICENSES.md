@@ -22,6 +22,7 @@ No third-party detector code, assets or fixtures are incorporated. No external d
 | Zensical | 0.0.65; documentation dependencies in requirements-docs.txt | MIT; upstream dependencies retain their notices | Static documentation build only; not firmware |
 | Emscripten / LLVM browser runtime | 6.0.10; compiler image digest in tools/build_web.py | Emscripten MIT / University of Illinois; LLVM Apache-2.0 WITH LLVM-exception and retained upstream terms | Browser simulator only; generated JS includes Emscripten attribution |
 | musl / libc++ / libc++abi / compiler-rt / libunwind | Bundled with pinned Emscripten | Upstream license texts copied into lab-app/LICENSES.txt | WebAssembly runtime; not ESP32 firmware |
+| ESP Web Tools | 10.4.0, pinned CDN entry module with SHA-384 integrity | Apache-2.0; upstream bundle retains dependency notices | Browser USB installer only, loaded from jsDelivr; not firmware or part of the passive radio runtime |
 | Web Crypto | Browser implementation | Platform API; no crypto library bundled | Browser SHA-256 and HMAC bridge; native/device backends unchanged |
 | Google Fast Pair / Find Hub documentation | URLs and retrieval date in provenance | CC-BY-4.0; factual fields independently normalized | Signature facts |
 | STMicroelectronics beacon documentation | URL/date in provenance | Public factual protocol layout; no code/text copied | iBeacon facts |

@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Getting started
 
-Surveillance Hound can run as a browser emulator before you have a board. For radio reception, use the supported ESP32 display hardware and build the firmware.
+Surveillance Hound can run as a browser emulator before you have a board. For radio reception, use the supported ESP32 display hardware and [install the firmware](flash.md).
 
 ## Try it without hardware
 
@@ -11,7 +11,9 @@ Open [Try the Hound](lab.md) for the browser lab, with synthetic sightings and t
 
 [Buy the tested Hosyond 4-inch ESP32 board](https://amzn.to/4d4VI5R) (affiliate link).
 
-Use the pinned SDK and a repository path without spaces. After activating ESP-IDF:
+The [browser flasher](flash.md) installs the initial alpha release without an SDK. It performs a full installation, resetting settings, ignored identities and game progress. Additional board support is coming soon.
+
+To build from source instead, use the pinned SDK and a repository path without spaces. After activating ESP-IDF:
 
 ```sh
 idf.py build

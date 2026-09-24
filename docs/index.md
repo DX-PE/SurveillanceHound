@@ -11,6 +11,7 @@ An offline ESP32 companion that notices nearby Wi-Fi and Bluetooth clues, keeps 
 
 [Get started](getting-started.md){ .md-button .md-button--primary }
 [Try the Hound](lab.md){ .md-button }
+[Install firmware](flash.md){ .md-button }
 
 ![Six original pixel hounds: Corgi, Beagle, Shiba, Husky, Labrador and Dalmatian](images/hound-pack.svg){ .hound-pack }
 
@@ -50,7 +51,7 @@ An offline ESP32 companion that notices nearby Wi-Fi and Bluetooth clues, keeps 
 
 Six dogs, local discoveries, earned outfits and a passive receiver for selected 2.4 GHz Wi-Fi management frames and legacy BLE advertisements. The application does not associate, probe, advertise, inject frames or upload observations. [See all features](features.md).
 
-!!! info "Development build · 0.1.0"
+!!! info "Initial alpha release · 0.1.0-alpha.1"
 
     Initial hardware checks and host regression tests are recorded. Controlled RF accuracy, card/power interruption checks and formal release acceptance remain open. See [current status](STATUS.md) and [release gates](RELEASE.md).
 

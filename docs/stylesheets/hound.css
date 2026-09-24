@@ -62,3 +62,31 @@
   .hound-hero { padding: 1rem; }
   .hound-hero h2 { font-size: 1.6rem; }
 }
+
+/* The installer stays in flow when enabled so recording/scroll position is stable. */
+.hound-installer {
+  border: 1px solid #726d8e;
+  border-radius: .6rem;
+  padding: 1.2rem;
+  margin: 1.5rem 0 1rem;
+  background: var(--md-code-bg-color);
+}
+.hound-install-confirm { display: flex; gap: .7rem; align-items: flex-start; margin: 1rem 0; }
+.hound-install-confirm input { flex: none; margin-top: .35rem; accent-color: #3ae3e6; width: 1rem; height: 1rem; }
+.hound-installer [hidden] { display: none !important; }
+.hound-installer button { font: inherit; cursor: pointer; }
+.hound-installer button:disabled { opacity: .45; cursor: not-allowed; }
+.hound-installer button:focus-visible, .hound-install-confirm input:focus-visible { outline: 3px solid #ff75b5; outline-offset: 4px; }
+#hound-install-status { min-height: 3.4em; color: var(--md-default-fg-color--light); }
+[data-md-color-scheme="slate"] ewt-install-dialog {
+  --text-color: #f7f7ff;
+  --md-sys-color-primary: #3ae3e6;
+  --md-sys-color-on-primary: #080c19;
+  --md-sys-color-on-surface: #f7f7ff;
+  --md-sys-color-on-surface-variant: #a59ebd;
+  --md-sys-color-surface: #191831;
+  --md-sys-color-surface-container: #191831;
+  --md-sys-color-surface-container-high: #191831;
+  --md-sys-color-surface-container-highest: #31245a;
+  --md-sys-color-secondary-container: #31245a;
+}

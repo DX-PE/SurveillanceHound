@@ -1,0 +1,13 @@
+{
+  "version": "0.1.0-alpha.1",
+  "name": "Surveillance Hound",
+  "board": "Hosyond 4-inch / LCDWiki E32R40T",
+  "chip": "ESP32",
+  "source_commit": "c7737030b2bc5de3aa419e21fbec1a3830b9c2e3",
+  "release_url": "https://github.com/DX-PE/SurveillanceHound/releases/tag/v0.1.0-alpha.1",
+  "firmware_url": "https://github.com/DX-PE/SurveillanceHound/releases/download/v0.1.0-alpha.1/surveillance-hound-v0.1.0-alpha.1-factory.bin",
+  "filename": "surveillance-hound-v0.1.0-alpha.1-factory.bin",
+  "offset": 0,
+  "size": 1353968,
+  "sha256": "1b6a98bfac9509b103417d63a970310cb0cbe05c962585e6f02b48118cc06ed7"
+}

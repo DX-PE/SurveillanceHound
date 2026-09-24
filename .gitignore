@@ -17,4 +17,5 @@ dependencies.lock
 .venv-docs/
 site/
 docs/lab-app/
+docs/firmware/
 .cache/
