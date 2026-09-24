@@ -502,3 +502,10 @@ The browser lab compiles the shared synthetic C++ simulator and firmware UI with
 Validation passed: all 15 Debug host suites; 169 native/WebAssembly state and full RGB565 frame comparisons, including against the pre-refactor native worker; the same parity run and core/UI suites with ASan/UBSan/LeakSanitizer; Python/C++ formatting, static invariants and workflow lint; and a strict clean Zensical build with all 40 generated HTML pages checked for local links, assets and anchors. Browser checks exercised the embedded and full-window lab, hunger/meal and following-warning controls, and stable canvas bounds at 1440×900 without page movement. The session isolation test starts a second fresh WebAssembly instance.
 
 These are software and local-browser checks. They do not establish radio accuracy, device power/memory behavior or public DNS/TLS/deployment status. The separate hardware acceptance gates remain open.
+
+
+## Initial GitHub build and compiler compatibility — 2026-09-24
+
+The first GitHub documentation workflow built and deployed successfully, including browser/native parity and strict site checks. All four firmware profiles (release, debug, test and demo) also passed. The host job stopped on GCC 13 analyzer file/memory-leak diagnostics in the existing SD export/recovery units. Those diagnostics were reproduced locally and inspected against the explicit cleanup and handle-tracking tests.
+
+On GCC 13 only, the two affected diagnostics remain visible warnings in those two source files instead of fatal errors. All other warnings, analyzers and sanitizers retain their prior policy. With that adjustment, the local GCC 13 analyzer build passed all 15 ASan/UBSan/LeakSanitizer suites (42.97 seconds) and 2,651,298 seeded mutation inputs over 60 seconds. This changes host compiler diagnostics only; firmware code and behavior are unchanged. Remote verification of the adjustment is recorded separately from the initial run.

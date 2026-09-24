@@ -74,6 +74,7 @@ python3 tools/docs_assets.py
 
 ## GitHub workflow
 
+
 `.github/workflows/docs.yml` builds the browser lab, checks native/browser parity, builds the documentation strictly, validates the resulting site, and uploads one `hound-docs` artifact on pushes, pull requests and manual dispatch.
 
 Pushes to the default branch of [DX-PE/SurveillanceHound](https://github.com/DX-PE/SurveillanceHound) publish the checked artifact to GitHub Pages. Pull requests only build and test. The deployment job uses the `github-pages` environment and narrowly scoped Pages/OIDC permissions.

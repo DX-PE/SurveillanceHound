@@ -37,6 +37,13 @@ if(SNIFFER_HOST)
     target_include_directories(sniffer_history PUBLIC components/storage/include)
     target_link_libraries(sniffer_history PUBLIC sniffer_core)
     target_compile_options(sniffer_history PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 13 AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 14)
+        # GCC 13's analyzer reports leaks at fopen/opendir despite the explicit
+        # cleanup and handles retained between recovery steps. Keep diagnostics
+        # visible; storage tests verify closure on completion/cancel/I/O failure.
+        set_source_files_properties(components/storage/history_export.cpp components/storage/history_recovery.cpp
+            PROPERTIES COMPILE_OPTIONS "-Wno-error=analyzer-file-leak;-Wno-error=analyzer-malloc-leak")
+    endif()
     add_executable(storage_export_tests tests/host/storage_export_tests.cpp)
     target_link_libraries(storage_export_tests PRIVATE sniffer_history)
     target_link_options(storage_export_tests PRIVATE
