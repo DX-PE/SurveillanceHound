@@ -3,6 +3,8 @@
 #include <algorithm>
 #ifdef ESP_PLATFORM
 #include "psa/crypto.h"
+#elif defined(__EMSCRIPTEN__)
+#include "simulator_crypto.hpp"
 #else
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
@@ -27,6 +29,8 @@ bool hmac_sha256(std::span<const uint8_t> key, std::span<const uint8_t> input,
                              out.data(), out.size(), &n);
     psa_destroy_key(id);
     return result == PSA_SUCCESS && n == out.size();
+#elif defined(__EMSCRIPTEN__)
+    return browser_hmac(key.data(), key.size(), input.data(), input.size(), out.data()) == 1;
 #else
     unsigned n = 0;
     return HMAC(EVP_sha256(), key.data(), static_cast<int>(key.size()), input.data(), input.size(),
@@ -41,6 +45,8 @@ bool sha256(std::span<const uint8_t> input, std::span<uint8_t, 32> out) {
            psa_hash_compute(PSA_ALG_SHA_256, input.data(), input.size(), out.data(), out.size(),
                             &n) == PSA_SUCCESS &&
            n == 32;
+#elif defined(__EMSCRIPTEN__)
+    return browser_sha256(input.data(), input.size(), out.data()) == 1;
 #else
     unsigned n = 0;
     return EVP_Digest(input.data(), input.size(), out.data(), &n, EVP_sha256(), nullptr) == 1 &&

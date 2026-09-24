@@ -1,16 +1,132 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Surveillance Hound · Local lab</title><link rel="stylesheet" href="/style.css"></head>
-<body><main>
-<header><a href="/" class="brand"><span>SURVEILLANCE</span><strong>HOUND<span class="brand-dot">_</span></strong></a><div class="connection"><i></i><span id="connection">CONNECTING</span></div><span class="version">0.1.0 / FIELD LAB</span></header>
-<section class="intro"><p class="eyebrow">A GOOD DOG WITH A NOSE FOR SIGNALS</p><h1>Good dog.<br><span>Sharp nose.</span></h1><p>Your pocket companion for the invisible world.<br>Choose your hound, tap the display, and take a test patrol.</p></section>
-<div class="lab"><section class="device-section" aria-label="Device simulator"><div class="device"><div class="device-label"><span>SH / 001</span><span>PASSIVE OBSERVER</span><span class="led">●</span></div><canvas id="screen" width="480" height="320" tabindex="0" aria-label="Interactive 480 by 320 device touchscreen"></canvas><div class="device-bottom"><span>SURVEILLANCE HOUND</span><button id="boot" title="Cycle the device's basic screens">BOOT</button></div></div><div class="display-controls"><span id="orientation">LANDSCAPE / LOCKED</span><button id="rotate" data-action="rotate" disabled>Rotate display</button></div><p class="caption">Touch the hound to say hello; tap its name for outfits. Tap BOOK for discoveries; Log → sighting → Follow Scent for reception.<br>Landscape is the default; rotation is manual.</p><div class="lab-note"><span>01 / ORIGINAL FIRMWARE UI</span><p>Six dogs. One shared mission.<br>A quiet patrol is a good patrol, too.</p></div></section>
-<aside><section class="card"><div class="card-title"><h2>Your patrol partner</h2><span class="tag">LIVE UI</span></div><div class="pet-summary"><strong id="pet-name">SCOUT</strong><span id="pet-type">CORGI</span></div><div class="stats"><div><span>MOOD</span><strong id="mood">70</strong></div><div><span>FULLNESS</span><strong id="fullness">70</strong></div><div><span>TEST EVENTS</span><strong id="events">0</strong></div></div><div class="actions"><button data-action="screen" data-a="2">Choose your hound</button><button data-action="onboard" class="subtle">Try first boot</button></div></section>
-<section class="card"><div class="card-title"><h2>Bouncing hound</h2><span class="tag amber">PREVIEW</span></div><p>Your chosen dog and outfit bounce around like a DVD screen saver. Defaults: dim at 2 minutes, bounce at 5, screen off at 15. Travel Watch blocks screen off. Tap the screen to wake it.</p><div class="actions"><button data-action="idle_test" data-a="0">Preview screen saver</button><button data-action="screen" data-a="28">Idle settings</button><button data-action="idle_test" data-a="2">Wait 2 minutes</button><button data-action="idle_test" data-a="5">Wait 5 minutes</button><button data-action="idle_test" data-a="15">Wait 15 minutes</button></div><p>Wait buttons advance the simulator clock. Scanning continues while the display rests.</p></section>
-<section class="card"><div class="card-title"><h2>Care for your hound</h2><span class="tag amber">PREVIEW</span></div><p>Try a hungry or sad hound, then send a Flipper or Pineapple snack to see the recovery jumps. Every five minutes without food lowers fullness by 3 and mood by 2.</p><div class="actions"><button data-action="pet_care" data-a="0">Hungry hound</button><button data-action="pet_care" data-a="1">Low mood</button><button data-action="pet_care" data-a="2">Wait 30 minutes</button></div><p>Preview only. Time jumps advance the simulator clock; saved progress and real detection rules stay unchanged.</p></section>
-<section class="card"><div class="card-title"><h2>Put a scent on the air</h2><span class="tag amber">SYNTHETIC</span></div><p>Send a sample sighting. Samples unlock demo outfits and fill a session-only Scent Book. They never award saved XP or write real logs.</p><div class="sightings"><button data-action="inject" data-a="0"><span class="symbol">≈</span><span><strong>Flipper</strong><small>Dolphin snack · high confidence</small></span><span class="arrow">↗</span></button><button data-action="inject" data-a="1"><span class="symbol">♢</span><span><strong>Pineapple</strong><small>Pineapple snack · medium confidence</small></span><span class="arrow">↗</span></button><button data-action="inject" data-a="2"><span class="symbol">◎</span><span><strong>Find Hub beacon</strong><small>Protocol match · high confidence</small></span><span class="arrow">↗</span></button><button data-action="inject" data-a="3"><span class="symbol">·</span><span><strong>Ambiguous Fast Pair</strong><small>Low confidence · no snack</small></span><span class="arrow">↗</span></button></div><div class="all-scents"><label for="scent-category">Try any snack</label><select id="scent-category" aria-label="Sample detection category"><option value="4">Flock</option><option value="5">Axon</option><option value="6">Glasses</option><option value="7">Skimmer</option><option value="8">Raven</option><option value="9">Airtag</option><option value="10">Tile</option><option value="11">Samsung Tag</option><option value="12">Google Tag</option><option value="13">Drone</option><option value="14">Alpr</option><option value="15">Camera</option><option value="16">Ring</option><option value="17">Ibeacon</option><option value="18">Flipper</option><option value="19">Pwnagotchi</option><option value="20">Pineapple</option><option value="21">Deauth</option><option value="22">Evil Twin</option></select><button id="sample-category">Send sample</button></div></section>
-<section class="card"><div class="card-title"><h2>Follow a signal</h2><span class="tag amber">SYNTHETIC</span></div><p>Send a sighting, open it in Log and tap Follow Scent. Adjust its next reading here. Turn repeat off to see the signal go stale, then lost.</p><label for="signal-level">Reception: <output id="signal-reading">-66 dBm</output></label><input id="signal-level" type="range" min="30" max="100" value="66" aria-label="Synthetic signal strength magnitude"><div class="actions"><button id="send-signal" disabled>Send signal reading</button></div><label><input id="repeat-signal" type="checkbox"> Repeat reading every second</label><p>RSSI describes reception; it gives no direction or exact distance. Signal-only readings do not award XP or add log entries.</p></section>
-<section class="card"><div class="card-title"><h2>Tag Watch</h2><span class="tag amber">SYNTHETIC</span></div><p>Preview a possible-following warning. This advances the simulator by ten minutes of repeated sightings from the same tag. Nearby tags alone do not prove movement.</p><label for="watch-category">Preview tag</label><select id="watch-category"><option value="9">AirTag / Find My</option><option value="11">Samsung Tag</option><option value="10">Tile</option><option value="12">Google Tag</option></select><div class="actions"><button id="preview-tag-watch">Preview red warning</button><button data-action="screen" data-a="26">Open Tag Watch</button></div><p id="watch-status" aria-live="polite">Watch is off.</p></section>
-<section class="card compact"><h2>Explore the device</h2><nav aria-label="Simulator screens"><button data-action="screen" data-a="5">Hound</button><button data-action="screen" data-a="6">Log</button><button data-action="screen" data-a="7">Detectors</button><button data-action="screen" data-a="8">Settings</button><button data-action="screen" data-a="13">Alert types</button><button data-action="screen" data-a="18">Scent Book</button><button data-action="screen" data-a="20">Wardrobe</button><button data-action="screen" data-a="22">Ignored scents</button><button data-action="screen" data-a="23">Follow Scent</button><button data-action="screen" data-a="24">Atmosphere</button><button data-action="screen" data-a="25">Display options</button><button data-action="screen" data-a="9">Diagnostics</button></nav><p id="state" aria-live="polite">Opening the hound screen…</p><button class="reset" data-action="reset">Reset test session</button></section></aside></div>
-<footer><span>SIMULATED EVENTS · NO RADIO CAPTURE · NO SAVED PROGRESS</span><span>Local lab / hardware testing needs the ESP32 board.</span></footer>
-</main><script src="/app.js"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Surveillance Hound · Local lab</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body data-runtime="native">
+<main>
+  <header>
+    <div class="brand"><span>SURVEILLANCE</span><strong>HOUND<span class="brand-dot">_</span></strong></div>
+    <div class="lab-title"><h1>Local lab</h1><span>Good dog. Sharp nose.</span></div>
+    <div class="connection" role="status"><i aria-hidden="true"></i><span id="connection">CONNECTING</span></div>
+    <button class="subtle" data-action="reset">Reset test session</button>
+  </header>
+
+  <div class="lab">
+    <aside class="control-rail partner-controls" aria-label="Hound and display controls" tabindex="0">
+      <section class="card">
+        <div class="card-title"><h2>Your patrol partner</h2><span class="tag">LIVE UI</span></div>
+        <div class="pet-summary"><strong id="pet-name">SCOUT</strong><span id="pet-type">CORGI</span></div>
+        <div class="stats">
+          <div><span>MOOD</span><strong id="mood">70</strong></div>
+          <div><span>FULLNESS</span><strong id="fullness">70</strong></div>
+          <div><span>EVENTS</span><strong id="events">0</strong></div>
+        </div>
+        <div class="actions">
+          <button data-action="screen" data-a="2">Choose your hound</button>
+          <button data-action="onboard" class="subtle">Try first boot</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-title"><h2>Care for your hound</h2><span class="tag amber">PREVIEW</span></div>
+        <p>Try a hungry or sad hound, then send a Flipper or Pineapple snack to see the happy hops.</p>
+        <div class="actions">
+          <button data-action="pet_care" data-a="0">Hungry hound</button>
+          <button data-action="pet_care" data-a="1">Low mood</button>
+          <button data-action="pet_care" data-a="2" class="subtle">Wait 30 minutes</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-title"><h2>Bouncing hound</h2><span class="tag amber">PREVIEW</span></div>
+        <p>Your chosen dog and outfit, DVD style. Tap the display to wake it.</p>
+        <div class="actions">
+          <button data-action="idle_test" data-a="0">Preview screen saver</button>
+          <button data-action="screen" data-a="28" class="subtle">Idle settings</button>
+        </div>
+        <span class="field-label">ADVANCE IDLE TIME</span>
+        <div class="actions time-controls">
+          <button data-action="idle_test" data-a="2" aria-label="Wait 2 minutes">2 min</button>
+          <button data-action="idle_test" data-a="5" aria-label="Wait 5 minutes">5 min</button>
+          <button data-action="idle_test" data-a="15" aria-label="Wait 15 minutes">15 min</button>
+        </div>
+        <p class="hint">Defaults: dim at 2, bounce at 5, off at 15 minutes. Travel Watch keeps the display on. Wait buttons advance the simulator clock.</p>
+      </section>
+    </aside>
+
+    <section class="device-section" aria-label="Device simulator">
+      <div class="stage">
+        <div class="device">
+          <div class="device-label"><span>SH / 001</span><span>PASSIVE OBSERVER</span><span class="led" aria-hidden="true">●</span></div>
+          <canvas id="screen" width="480" height="320" tabindex="0" aria-label="Interactive 480 by 320 device touchscreen"></canvas>
+          <div class="device-bottom"><span>SURVEILLANCE HOUND</span><button id="boot" title="Cycle the device's basic screens">BOOT</button></div>
+        </div>
+      </div>
+      <div class="display-controls"><span id="orientation">LANDSCAPE / LOCKED</span><button id="rotate" data-action="rotate" disabled>Rotate display</button></div>
+      <nav aria-label="Simulator screens">
+        <button data-action="screen" data-a="5">Hound</button>
+        <button data-action="screen" data-a="6">Log</button>
+        <button data-action="screen" data-a="7">Detectors</button>
+        <button data-action="screen" data-a="8">Settings</button>
+        <button data-action="screen" data-a="20">Wardrobe</button>
+        <button data-action="screen" data-a="18">Scent Book</button>
+        <button data-action="screen" data-a="13">Alert types</button>
+        <button data-action="screen" data-a="22">Ignored scents</button>
+        <button data-action="screen" data-a="23">Follow Scent</button>
+        <button data-action="screen" data-a="24">Atmosphere</button>
+        <button data-action="screen" data-a="25">Display options</button>
+        <button data-action="screen" data-a="9">Diagnostics</button>
+      </nav>
+      <p class="caption">Tap the hound to say hello, or its name for outfits. Controls keep the display in place for recording.</p>
+      <p id="state" role="status">Opening the hound screen…</p>
+    </section>
+
+    <aside class="control-rail signal-controls" aria-label="Sample and signal controls" tabindex="0">
+      <section class="card">
+        <div class="card-title"><h2>Put a scent on the air</h2><span class="tag amber">SYNTHETIC</span></div>
+        <p>Sample sightings unlock demo outfits and fill your session’s Scent Book.</p>
+        <div class="sightings">
+          <button data-action="inject" data-a="0"><span class="symbol" aria-hidden="true">≈</span><span><strong>Flipper</strong><small>Dolphin snack · high confidence</small></span></button>
+          <button data-action="inject" data-a="1"><span class="symbol" aria-hidden="true">♢</span><span><strong>Pineapple</strong><small>Pineapple snack · medium confidence</small></span></button>
+          <button data-action="inject" data-a="2"><span class="symbol" aria-hidden="true">◎</span><span><strong>Find Hub beacon</strong><small>Protocol match · high confidence</small></span></button>
+          <button data-action="inject" data-a="3"><span class="symbol" aria-hidden="true">·</span><span><strong>Ambiguous Fast Pair</strong><small>Low confidence · no snack</small></span></button>
+        </div>
+        <div class="all-scents">
+          <label for="scent-category">Try any snack</label>
+          <select id="scent-category" aria-label="Sample detection category">
+            <option value="4">Flock</option><option value="5">Axon</option><option value="6">Glasses</option><option value="7">Skimmer</option><option value="8">Raven</option><option value="9">AirTag</option><option value="10">Tile</option><option value="11">Samsung Tag</option><option value="12">Google Tag</option><option value="13">Drone</option><option value="14">ALPR</option><option value="15">Camera</option><option value="16">Ring</option><option value="17">iBeacon</option><option value="18">Flipper</option><option value="19">Pwnagotchi</option><option value="20">Pineapple</option><option value="21">Deauth</option><option value="22">Evil Twin</option>
+          </select>
+          <button id="sample-category">Send sample</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-title"><h2>Follow a signal</h2><span class="tag amber">SYNTHETIC</span></div>
+        <p>Send a sample, then open Log → sighting → Follow Scent. Adjust its next reading here.</p>
+        <label for="signal-level">Reception: <output id="signal-reading">-66 dBm</output></label>
+        <input id="signal-level" type="range" min="30" max="100" value="66" aria-label="Synthetic signal strength magnitude">
+        <div class="actions"><button id="send-signal" disabled>Send signal reading</button></div>
+        <label class="checkbox"><input id="repeat-signal" type="checkbox"> Repeat reading every second</label>
+        <p class="hint">Turn repeat off to see stale, then lost. Reception gives no direction or exact distance; readings add no XP or log entries.</p>
+      </section>
+
+      <section class="card">
+        <div class="card-title"><h2>Tag Watch</h2><span class="tag amber">SYNTHETIC</span></div>
+        <p>Preview ten minutes of repeated tag sightings. Nearby tags alone do not prove movement.</p>
+        <label for="watch-category">Preview tag</label>
+        <select id="watch-category"><option value="9">AirTag / Find My</option><option value="11">Samsung Tag</option><option value="10">Tile</option><option value="12">Google Tag</option></select>
+        <div class="actions"><button id="preview-tag-watch">Preview red warning</button><button data-action="screen" data-a="26" class="subtle">Open Tag Watch</button></div>
+        <p id="watch-status" role="status">Watch is off.</p>
+      </section>
+    </aside>
+  </div>
+  <footer><span>SIMULATED EVENTS · NO RADIO CAPTURE · NO SAVED PROGRESS</span><span>0.1.0 / FIELD LAB</span></footer>
+</main>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

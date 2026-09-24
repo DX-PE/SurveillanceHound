@@ -2,6 +2,34 @@
 #pragma once
 #include "sniffer/core.hpp"
 namespace sniffer::ui {
+struct CoveragePage {
+    const char *heading;
+    const char *summary;
+    const char *detail;
+};
+constexpr CoveragePage coverage_guide[] = {
+    {"WHAT HOUND HEARS", "Hound listens for 2.4 GHz Wi-Fi and Bluetooth LE broadcasts.",
+     "Only recognizable signals count. Scan windows and channel changes can miss devices. "
+     "Wi-Fi clues currently use management frames, not connected-device data traffic."},
+    {"WHAT A CLUE MEANS",
+     "Names and vendor clues do not prove who owns a device or that it is recording.",
+     "Repeated sightings do not make a weak clue strong. Travel Watch flags repeated nearby "
+     "tags. Without location or motion input, it cannot confirm they followed you."},
+    {"WHAT STAYS UNSEEN",
+     "Silent listeners and wired or cellular-only devices may give Hound nothing to hear.",
+     "This includes silent PAX counters, cellular-only trackers and plate readers, cellular "
+     "interception equipment and acoustic-only sensors. A separate supported broadcast may "
+     "still provide a clue."},
+    {"RADIOS OUT OF REACH",
+     "This board cannot hear 5 or 6 GHz Wi-Fi. BLE coverage also has limits.",
+     "No Classic Bluetooth discovery, extended BLE ads or coded PHY. Optical, IR, radar, "
+     "RFID, LoRa and proprietary drone links are outside these detectors, even if their "
+     "frequencies overlap."},
+    {"QUIET IS NOT ALL CLEAR",
+     "No matching signals observed does not mean there are no devices nearby.",
+     "Hound is not a complete device inventory or a safety guarantee. A sleeping radio, "
+     "changed name, unsupported signal or missed packet can leave no matching scent."},
+};
 struct ScentGuide {
     const char *about;
     const char *caution;

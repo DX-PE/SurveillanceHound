@@ -25,9 +25,17 @@ The development pack has **67 enabled rules covering all 19 categories**. Rules 
 | DEAUTH | 20 deauth/disassociation frames from one source/channel within 10 seconds | Legitimate maintenance can cause bursts |
 | EVIL_TWIN | Same raw SSID on concurrent open/protected APs; stronger score requires two vendor/PMF/IE/channel-RSSI differences | Mixed deployments can be legitimate; never proof of an attack |
 
-`data/signatures.yaml` and `data/provenance.yaml` provide every exact value, source URL, score and review limitation. external detector reference facts were consulted with the user's authorization; implementation, fixtures and rule descriptions are project-owned. Primary specifications and original research were used where available. Reference-derived vendor mappings still need independent registry/field corroboration before a final release.
+`data/signatures/catalog.yaml` and `data/provenance.yaml` provide every exact value, source URL, score and review limitation. External detector reference facts were consulted with the user's authorization; implementation, fixtures and rule descriptions are project-owned. Primary specifications and original research were used where available. Reference-derived vendor mappings still need independent registry/field corroboration before a final release.
 
-Names alone are capped Medium; generic or locally administered vendor-prefix evidence is capped Low. Same-kind evidence does not stack. Evidence expires after 30 seconds; repeats do not add confidence; contradictions subtract 20. The fusion ceiling remains the highest applicable rule cap.
+Names alone are capped Medium; generic evidence is capped Low. Wi-Fi manufacturer-prefix rules reject locally administered and group transmitter addresses, rather than assigning them a vendor. Local administration does not necessarily mean randomization. This check applies only to transmitter addresses: payload identifiers and BLE evidence keep their own matching rules. Same-kind evidence does not stack. Evidence expires after 30 seconds; repeats do not add confidence; contradictions subtract 20. The fusion ceiling remains the highest applicable rule cap.
+
+SSID exact/prefix rules match only beacons and probe responses, where the sender advertises a network. Probe requests remain parseable but cannot identify the client as the host of its remembered network. Names remain case-sensitive and spoofable.
+
+## On-device Coverage help
+
+Open **Scent Book → COVERAGE** from any book page. Five pages explain supported signals, interpretation limits, silent devices, unsupported radios and why **“No matching signals observed” is not an all-clear**. Back returns to the same book page. Reading help does not add discoveries or interrupt scanning; ordinary display idle timeouts still apply.
+
+Hound listens passively for selected 2.4 GHz Wi-Fi management frames and legacy BLE advertisements. It cannot hear 5/6 GHz Wi-Fi or discover Classic Bluetooth, extended BLE advertisements or coded-PHY traffic with the current firmware and board. Silent PAX counters, wired/cellular-only equipment and acoustic-only sensors may emit nothing these detectors recognize. Optical, IR, radar, RFID, LoRa and proprietary drone links are outside these decoders even where frequencies overlap; a separate supported broadcast may still provide a clue. Travel Watch establishes repeated nearby presence, not confirmed movement.
 
 ## Bounds and identity
 
@@ -36,7 +44,7 @@ Names alone are capped Medium; generic or locally administered vendor-prefix evi
 - Remote ID cache: eight transmitting addresses, separately expiring Basic/Location/System parts after 60 seconds. Evidence details show a volatile snapshot; serials/coordinates never enter logs or exports.
 - Latest 32 emitted events are paged four at a time. Opening details freezes the selected evidence, even as new events arrive.
 - Updates are limited to one per identity per 30 seconds except first sightings/grade increases, plus a global 100 ms limit.
-- Meal identity uses category, radio, address and address type, omitting changing rule sets. No identity is inferred from RSSI or joined across rotating addresses. Pwnagotchi's shared signature transmitter is replaced with its transmitted source identity.
+- Meal identity uses category and a supported Samsung broadcast ID when available; otherwise it uses radio, address and address type, omitting changing rule sets. No identity is inferred from RSSI; changed broadcast IDs and unsupported rotating addresses are not joined. Pwnagotchi's shared signature transmitter is replaced with its transmitted source identity.
 - 128 meal entries; 30-minute source cooldown (10 minutes for deauth), 30 seconds per category and five seconds globally. Latest 32 are persisted; restore uses a conservative 30 powered-on-minute hold.
 
 Hardware covers 2.4 GHz Wi-Fi and legacy BLE. It misses 5/6 GHz, extended advertising, coded PHY, non-advertising devices and packets outside the current time/channel slice. No RSSI-to-distance estimate is made.

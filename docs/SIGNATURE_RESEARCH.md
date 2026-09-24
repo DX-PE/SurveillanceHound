@@ -1,6 +1,8 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # External signature review
 
+For the independent primary-source review of roadmap items 1–8, use the [2026-09-23 coding handoff](DETECTION_RESEARCH_1_8.md). The historical findings below retain their original scope and do not describe new enabled rules.
+
 ## External reference review
 
 **Historical review:** the later authorized implementation adds 67 enabled rules. See [DETECTIONS.md](DETECTIONS.md) and current provenance for shipped behavior; the findings below describe the earlier review.

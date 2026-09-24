@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <string>
 #include <vector>
 using namespace sniffer;
 static int checks;
@@ -139,7 +140,96 @@ void needs_tests() {
     p.stroke();
     CHECK(p.fullness == 0 && p.mood == 2);
 }
+void wifi_inference_tests() {
+    Settings settings;
+    std::array<Detection, 4> out{};
+    const Rule exact = rule("test.ssid", Kind::SsidExact, "Pineapple_LAB");
+    const Rule prefix = rule("test.prefix", Kind::SsidPrefix, "Pineapple_");
+    // Parse actual frame layouts, including the shorter probe-request header.
+    for (uint8_t subtype : {8, 5, 4}) {
+        auto bytes = beacon("Pineapple_LAB");
+        bytes[0] = subtype << 4;
+        if (subtype == 4)
+            bytes.erase(bytes.begin() + 24, bytes.begin() + 36);
+        Observation o{};
+        o.ms = 1000;
+        CHECK(parse_wifi(bytes, o));
+        CHECK(o.subtype == subtype && o.ssid_len == 13);
+        const bool hosted = subtype != 4;
+        CHECK(matches(exact, o) == hosted);
+        CHECK(matches(prefix, o) == hosted);
+        Engine engine(production_rules);
+        CHECK(engine.ingest(o, settings, out) == size_t(hosted));
+        CHECK(engine.recent_counts(o.ms, settings)[1] == unsigned(hosted));
+        if (hosted)
+            CHECK(out[0].category == Category::PINEAPPLE);
+    }
+    // The frame-role guard must preserve literal byte matching, including the
+    // 32-byte boundary, rather than matching the sanitized display name.
+    for (uint8_t subtype : {8, 5}) {
+        for (const auto &ssid : {std::string{}, std::string{"pineapple_LAB"},
+                                 std::string{"xPineapple_LAB"}, std::string{"Pineapple\0_LAB", 14},
+                                 std::string{"Pineapple_"} + std::string(22, 'X')}) {
+            auto bytes = beacon("");
+            bytes[0] = subtype << 4;
+            bytes[37] = uint8_t(ssid.size());
+            bytes.insert(bytes.end(), ssid.begin(), ssid.end());
+            Observation sample{};
+            CHECK(parse_wifi(bytes, sample));
+            CHECK(sample.ssid_len == ssid.size());
+            CHECK(!matches(exact, sample));
+            CHECK(matches(prefix, sample) == (ssid.size() == 32));
+            auto malformed = bytes;
+            malformed.insert(malformed.end(), {0, 1, 'X'});
+            CHECK(!parse_wifi(malformed, sample)); // Duplicate SSID IE.
+            bytes.pop_back();
+            CHECK(!parse_wifi(bytes, sample)); // Truncated length or SSID.
+        }
+    }
+    // A locally administered source loses only the MAC manufacturer clue.
+    // A vendor identifier carried in an IE is not a transmitter address.
+    const Rule clues[] = {rule("test.local", Kind::Oui, "122030"), prefix,
+                          rule("test.payload", Kind::Payload, "6A5C35")};
+    auto bytes = beacon("Pineapple_LAB");
+    bytes[10] = 0x12;
+    bytes[11] = 0x20;
+    bytes[12] = 0x30;
+    bytes.insert(bytes.end(), {221, 3, 0x6a, 0x5c, 0x35});
+    Observation o{};
+    o.ms = 1000;
+    CHECK(parse_wifi(bytes, o));
+    CHECK(!matches(clues[0], o) && matches(clues[1], o) && matches(clues[2], o));
+    Engine local(clues);
+    CHECK(local.ingest(o, settings, out) == 1);
+    CHECK(out[0].rule_count == 2 && out[0].score == 75);
+    CHECK((local.recent_counts(o.ms, settings) == std::array<uint32_t, 3>{0, 1, 0}));
+
+    // Test matching prefixes for all four U/L + I/G combinations: no masking
+    // a local/group address back into a globally assigned manufacturer prefix.
+    for (auto [first, value] :
+         {std::pair{0x10, "102030"}, {0x11, "112030"}, {0x12, "122030"}, {0x13, "132030"}}) {
+        const auto vendor = rule("test.vendor", Kind::Oui, value);
+        o = {};
+        o.address = {uint8_t(first), 0x20, 0x30, 0, 0, 1};
+        o.ms = 1000;
+        Engine engine(std::span(&vendor, 1));
+        CHECK(matches(vendor, o) == (first == 0x10));
+        CHECK(engine.ingest(o, settings, out) == size_t(first == 0x10));
+        CHECK(engine.recent_counts(o.ms, settings)[1] == unsigned(first == 0x10));
+        o.radio = Radio::Ble;
+        CHECK(!matches(vendor, o));
+    }
+    // BLE's address type and payload evidence are independent of Wi-Fi OUI inference.
+    o = {};
+    o.radio = Radio::Ble;
+    o.address = {0x12, 0x20, 0x30, 0, 0, 1};
+    o.address_type = 1;
+    const std::array<uint8_t, 4> company{3, 0xff, 0x4c, 0};
+    CHECK(parse_ble(company, o));
+    CHECK(matches(rule("test.company", Kind::Company, "004C"), o));
+}
 int main() {
+    wifi_inference_tests();
     needs_tests();
     recent_count_tests();
     Observation o{};
@@ -210,8 +300,9 @@ int main() {
     auto local = rule("test.local", Kind::Oui, "122030", 95, 100);
     o.address[0] = 0x12;
     Engine l(std::span(&local, 1));
-    CHECK(l.ingest(o, settings, out) == 1);
-    CHECK(out[0].score == 49);
+    CHECK(!matches(local, o));
+    CHECK(l.ingest(o, settings, out) == 0);
+    CHECK((l.recent_counts(o.ms, settings) == std::array<uint32_t, 3>{0, 0, 0}));
     // A same-kind exact/prefix pair must not count as independent corroboration.
     Rule names[] = {rule("test.name", Kind::NameExact, "LAB"),
                     rule("test.prefix", Kind::NamePrefix, "LA")};
@@ -288,6 +379,7 @@ int main() {
                           rule("group.vendor", Kind::Payload, "01", 50, 100),
                           rule("group.pwn", Kind::Protocol, "pwnagotchi", 50, 100)};
     Observation all_wifi{};
+    all_wifi.subtype = 8;
     all_wifi.address = {0x10, 0x20, 0x30, 0, 0, 1};
     all_wifi.ssid = {'L', 'A', 'B'};
     all_wifi.ssid_len = 3;

@@ -45,7 +45,7 @@ The `.yaml` sources deliberately use YAML's JSON subset so the firmware build ha
 
 ## Checks
 
-Follow README for host setup, then:
+Follow the [host setup and test guide](testing.md), then:
 
 ```sh
 python3 tools/check_static.py

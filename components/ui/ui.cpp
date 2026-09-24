@@ -349,6 +349,9 @@ struct Layout {
         return {12 + (i % cols) * cw, (portrait ? 78 : 68) + (i / cols) * (portrait ? 100 : 80),
                 cw - 6, portrait ? 94 : 74};
     }
+    Rect book_coverage() const {
+        return {12, h - 40, w - 24, 28};
+    }
     Rect home_book() const {
         return portrait ? Rect{238, 32, 70, 25} : Rect{390, 32, 78, 25};
     }
@@ -402,7 +405,8 @@ const char *titles[] = {
     "CLEAR LOGS",     "SELF TEST",          "SCENT BOOK",        "SCENT CARD",
     "WARDROBE",       "QUIET ALERTS",       "IGNORED SCENTS",    "FOLLOW SCENT",
     "ATMOSPHERE",     "DISPLAY OPTIONS",    "TAG WATCH",         "WATCH PROGRESS",
-    "SCREEN SAVER",   "IGNORE BACKUP"};
+    "SCREEN SAVER",   "IGNORE BACKUP",      "DETECTION COVERAGE"};
+static_assert(std::size(titles) == size_t(Screen::Coverage) + 1);
 } // namespace
 const char *View::ignore_backup_message() const {
     if (demo)
@@ -948,8 +952,18 @@ void View::tap(int x, int y) {
         requests |= Save;
         return;
     }
-    if (screen == Screen::ScentBook) {
+    if (screen == Screen::Coverage) {
         if (l.confirm(false).has(x, y))
+            screen = Screen::ScentBook;
+        else if (l.confirm(true).has(x, y))
+            coverage_page = (coverage_page + 1) % std::size(coverage_guide);
+        return;
+    }
+    if (screen == Screen::ScentBook) {
+        if (l.book_coverage().has(x, y)) {
+            coverage_page = 0;
+            screen = Screen::Coverage;
+        } else if (l.confirm(false).has(x, y))
             screen = Screen::Settings;
         else if (l.confirm(true).has(x, y))
             book_page = (book_page + 1) % 4;
@@ -2038,6 +2052,19 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
         c.text(16, l.h - 23, "ADDRESS CHANGES REQUIRE A NEW SELECTION", muted, 1);
         break;
     }
+    case Screen::Coverage: {
+        const int page = std::clamp(coverage_page, 0, int(std::size(coverage_guide)) - 1);
+        const auto &guide = coverage_guide[page];
+        c.text(16, 78, guide.heading, mint, 2);
+        c.wrap(16, 112, guide.summary, l.portrait ? 24 : 37, ink, 2);
+        c.wrap(16, l.portrait ? 244 : 186, guide.detail, l.portrait ? 48 : 74, muted, 1);
+        button(c, l.confirm(false), "BACK TO BOOK");
+        button(c, l.confirm(true), "NEXT");
+        std::snprintf(text, sizeof(text), "PAGE %d OF %u / PASSIVE CLUES", page + 1,
+                      unsigned(std::size(coverage_guide)));
+        c.text(16, l.h - 33, text, amber, 1);
+        break;
+    }
     case Screen::ScentBook: {
         std::snprintf(text, sizeof(text), "%u/19 FOUND", collection().discoveries());
         c.text(l.w - 88, 46, text, mint, 1);
@@ -2055,6 +2082,7 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
         button(c, l.confirm(false), "BACK");
         std::snprintf(text, sizeof(text), "NEXT / %d OF 4", book_page + 1);
         button(c, l.confirm(true), text);
+        button(c, l.book_coverage(), "COVERAGE / WHAT HOUND CAN HEAR");
         break;
     }
     case Screen::ScentCard: {
@@ -2219,8 +2247,10 @@ void View::render(int tile_y, std::span<uint16_t> pixels) {
     }
     case Screen::Log:
         if (!recent_count)
-            c.wrap(16, 100, "No scents yet. A quiet place is fine. Your hound is happy to wait.",
-                   l.portrait ? 24 : 37);
+            c.wrap(
+                16, 100,
+                "No matching signals observed. Devices can be missed. See Scent Book / Coverage.",
+                l.portrait ? 24 : 37);
         for (size_t i = 0; i < 4 && size_t(log_page * 4) + i < recent_count; ++i) {
             const auto &d = recent[log_page * 4 + i];
             auto r = l.log(i);

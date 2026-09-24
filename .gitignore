@@ -12,3 +12,9 @@ managed_components/
 dependencies.lock
 *.JSONL
 !tests/fixtures/*.JSONL
+
+# Local documentation environment and generated site
+.venv-docs/
+site/
+docs/lab-app/
+.cache/

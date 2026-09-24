@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import {createTransport} from './transport.js';
+let transport;
+let stopped = false;
 const canvas = document.querySelector('#screen');
 const context = canvas.getContext('2d', {alpha: false});
 let pixels = context.createImageData(480, 320);
@@ -7,10 +10,8 @@ let active = true;
 let following = false;
 let lastSignal = 0;
 
-async function display(response) {
-  if (!response.ok) throw new Error(`Simulator returned ${response.status}`);
-  const state = JSON.parse(response.headers.get('X-Sniffer-State'));
-  const bytes = new DataView(await response.arrayBuffer());
+function display({state, frame}) {
+  const bytes = new DataView(frame);
   if (![[480, 320], [320, 480]].some(([w, h]) => w === state.width && h === state.height)) throw new Error('Invalid display size');
   if (canvas.width !== state.width || canvas.height !== state.height) {
     canvas.width = state.width;
@@ -40,24 +41,17 @@ async function display(response) {
   document.querySelector('#fullness').textContent = state.fullness;
   document.querySelector('#events').textContent = state.events;
   document.querySelector('#state').textContent = `Device screen: ${state.screen} · Display: ${["awake", "dimmed", "bouncing hound", "off"][state.display_mode]} · ${state.paused ? "Sleeping" : "Sniffing"} · Demo XP: ${state.preview_xp} · Scents: ${state.discoveries}/19${state.snoozed ? " · Alerts snoozed" : ""}`;
-  document.querySelector('#connection').textContent = 'LOCAL SIMULATOR RUNNING';
+  document.querySelector('#connection').textContent = transport.label;
 }
 function fail(error) {
-  document.querySelector('#connection').textContent = 'CONNECTION LOST';
+  stopped = true;
+  document.querySelector('#connection').textContent = 'LAB UNAVAILABLE';
   document.querySelector('#state').textContent = error.message;
-}
-function focusDisplay() {
-  canvas.scrollIntoView({block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
 }
 function request(action) {
   requests = requests.then(async () => {
-    const response = action ? await fetch('/api/action', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(action)
-    }) : await fetch('/api/frame');
-    await display(response);
-    if (['inject', 'tag_watch_test', 'pet_care', 'idle_test'].includes(action?.action)) {
-      focusDisplay();
-    }
+    if (stopped) return;
+    display(await transport.request(action));
   }).catch(fail);
   return requests;
 }
@@ -76,6 +70,7 @@ for (const button of document.querySelectorAll('[data-action]')) {
 }
 document.addEventListener('visibilitychange', () => {active = !document.hidden;});
 async function tick() {
+  if (stopped) return;
   if (active) {
     if (following && document.querySelector('#repeat-signal').checked && Date.now() - lastSignal >= 1000) {
       lastSignal = Date.now();
@@ -84,14 +79,18 @@ async function tick() {
   }
   setTimeout(tick, 125);
 }
-tick();
+try {
+  transport = createTransport(document.body.dataset.runtime);
+  tick();
+} catch (error) {fail(error);}
+window.addEventListener('pagehide', () => {stopped = true; transport?.close();});
+window.addEventListener('pageshow', event => {if (event.persisted) location.reload();});
 
 document.querySelector('#sample-category').addEventListener('click', () => request({action: 'inject', a: Number(document.querySelector('#scent-category').value), b: Number(document.querySelector('#signal-level').value)}));
 
 const signalLevel = document.querySelector('#signal-level');
 signalLevel.addEventListener('input', () => {document.querySelector('#signal-reading').textContent = `-${signalLevel.value} dBm`;});
-document.querySelector('#send-signal').addEventListener('click', () => request({action: 'signal', b: Number(signalLevel.value)}).then(focusDisplay));
-document.querySelector('#repeat-signal').addEventListener('change', event => {if (event.target.checked) focusDisplay();});
+document.querySelector('#send-signal').addEventListener('click', () => request({action: 'signal', b: Number(signalLevel.value)}));
 
 // Synthetic-only time jump; live firmware still requires actual elapsed observation time.
 document.querySelector('#preview-tag-watch').addEventListener('click', () => request({action: 'tag_watch_test', a: Number(document.querySelector('#watch-category').value), b: Number(signalLevel.value)}));

@@ -19,6 +19,10 @@ No third-party detector code, assets or fixtures are incorporated. No external d
 | attrs / rpds-py / typing_extensions | requirements-dev.txt exact versions | MIT / MIT / PSF-2.0 | Schema test dependencies |
 | clang-format | 20.1.8 | Apache-2.0 WITH LLVM-exception | Formatter only |
 | Ruff | 0.13.1 | MIT | Python static/format checks |
+| Zensical | 0.0.65; documentation dependencies in requirements-docs.txt | MIT; upstream dependencies retain their notices | Static documentation build only; not firmware |
+| Emscripten / LLVM browser runtime | 6.0.10; compiler image digest in tools/build_web.py | Emscripten MIT / University of Illinois; LLVM Apache-2.0 WITH LLVM-exception and retained upstream terms | Browser simulator only; generated JS includes Emscripten attribution |
+| musl / libc++ / libc++abi / compiler-rt / libunwind | Bundled with pinned Emscripten | Upstream license texts copied into lab-app/LICENSES.txt | WebAssembly runtime; not ESP32 firmware |
+| Web Crypto | Browser implementation | Platform API; no crypto library bundled | Browser SHA-256 and HMAC bridge; native/device backends unchanged |
 | Google Fast Pair / Find Hub documentation | URLs and retrieval date in provenance | CC-BY-4.0; factual fields independently normalized | Signature facts |
 | STMicroelectronics beacon documentation | URL/date in provenance | Public factual protocol layout; no code/text copied | iBeacon facts |
 | OpenDroneID header | Upstream master consulted 2026-09-21, not linked | Apache-2.0 | Experimental message format review |

@@ -36,7 +36,8 @@ enum class Screen {
     TagWatch,
     WatchProgress,
     IdleDisplay,
-    IgnoreBackup
+    IgnoreBackup,
+    Coverage
 };
 enum Request : uint32_t {
     Save = 1,
@@ -83,7 +84,7 @@ class View {
     uint64_t snooze_until{}, preview_snooze_until{}, unlock_until{};
     uint32_t preview_xp{};
     uint8_t unlocked_outfit{};
-    int book_page{}, scent_index{}, scent_page{}, wardrobe_index{}, ignored_page{};
+    int book_page{}, scent_index{}, scent_page{}, wardrobe_index{}, ignored_page{}, coverage_page{};
     IgnoreBackupStatus ignore_backup{IgnoreBackupStatus::Waiting};
     uint32_t ignore_backup_count{}, manual_backup_count{}, sd_checked_rows{}, sd_checked_files{};
     bool backup_pending{}, sd_checking{};

@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: Apache-2.0
+[project]
+site_name = "Surveillance Hound"
+site_description = "An offline ESP32 companion for passive Wi-Fi and Bluetooth observation. Guides, detection evidence and development documentation."
+site_author = "Jascha Wanger"
+copyright = 'Copyright &copy; 2026 Jascha Wanger (<a href="https://dx.pe">dx.pe</a>)'
+docs_dir = "docs"
+site_dir = "site"
+dev_addr = "127.0.0.1:8000"
+strict = true
+site_url = "https://surveillancehound.dx.pe/"
+repo_url = "https://github.com/DX-PE/SurveillanceHound"
+repo_name = "DX-PE/SurveillanceHound"
+extra_css = ["stylesheets/hound.css"]
+nav = [
+  { "Start" = [
+    { "Welcome" = "index.md" },
+    { "Getting started" = "getting-started.md" },
+    { "Try the Hound" = "lab.md" },
+    { "Local emulator" = "simulator.md" },
+    { "Features" = "features.md" },
+  ] },
+  { "Your Hound" = [
+    { "Controls and settings" = "controls.md" },
+    { "Care and wardrobe" = "hound-care.md" },
+    { "Appearance and screen saver" = "appearance.md" },
+    { "Alerts, counts and ignores" = "alerts.md" },
+    { "Travel Watch" = "tag-watch.md" },
+    { "Follow Scent" = "follow-scent.md" },
+    { "SD card and saved state" = "storage.md" },
+    { "Ignore backups" = "IGNORE_STORAGE.md" },
+    { "Privacy" = "PRIVACY.md" },
+    { "Community export" = "COMMUNITY_EXPORT.md" },
+  ] },
+  { "Detection" = [
+    { "Coverage and limits" = "DETECTIONS.md" },
+    { "Samsung identity" = "SAMSUNG_TAGS.md" },
+    { "Expansion research, items 1–8" = "DETECTION_RESEARCH_1_8.md" },
+    { "Historical signature review" = "SIGNATURE_RESEARCH.md" },
+  ] },
+  { "Development" = [
+    { "Contributing" = "CONTRIBUTING.md" },
+    { "Code map" = "architecture.md" },
+    { "Build firmware" = "BUILDING.md" },
+    { "Host tests" = "testing.md" },
+    { "Hardware test plan" = "TEST_PLAN.md" },
+    { "Device worksheet" = "device-checklist.md" },
+    { "C3 radio harness" = "C3_RADIO_TEST.md" },
+    { "Fixture policy" = "fixtures.md" },
+    { "Documentation" = "documentation.md" },
+  ] },
+  { "Project" = [
+    { "Current status" = "STATUS.md" },
+    { "Roadmap" = "ROADMAP.md" },
+    { "Release gates" = "RELEASE.md" },
+    { "Licenses and dependencies" = "licenses.md" },
+    { "Original assets" = "assets.md" },
+  ] },
+  { "Engineering records" = [
+    { "Hardware measurements" = "HARDWARE.md" },
+    { "Implementation verification" = "VERIFICATION.md" },
+    { "Status snapshot: September 23" = "history/status-2026-09-23.md" },
+  ] },
+]
+
+[project.theme]
+language = "en"
+custom_dir = "docs-overrides"
+logo = "images/hound.svg"
+favicon = "images/hound.svg"
+font = false
+features = [
+  "navigation.tabs", "navigation.sections", "navigation.top",
+  "navigation.footer", "navigation.tracking", "navigation.path",
+  "search.suggest", "search.highlight", "content.code.copy",
+  "content.code.annotate", "toc.follow",
+]
+
+[[project.theme.palette]]
+scheme = "slate"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to light mode"
+
+[[project.theme.palette]]
+scheme = "default"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to Midnight mode"
+
+[project.validation]
+invalid_links = true
+invalid_link_anchors = true
+
+[project.markdown_extensions.admonition]
+[project.markdown_extensions.attr_list]
+[project.markdown_extensions.def_list]
+[project.markdown_extensions.footnotes]
+[project.markdown_extensions.md_in_html]
+[project.markdown_extensions.tables]
+[project.markdown_extensions.toc]
+permalink = true
+toc_depth = 3
+[project.markdown_extensions."pymdownx.details"]
+[project.markdown_extensions."pymdownx.highlight"]
+anchor_linenums = true
+[project.markdown_extensions."pymdownx.inlinehilite"]
+[project.markdown_extensions."pymdownx.superfences"]
+[project.markdown_extensions."pymdownx.tasklist"]
+custom_checkbox = true
+[project.markdown_extensions."pymdownx.snippets"]
+check_paths = true

@@ -1,6 +1,25 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Implementation verification
 
+## Zensical documentation site — 2026-09-24
+
+- Organized all repository Markdown into 37 navigable pages, including five single-source imports for the dependency ledger, asset attribution and test worksheets. Historical status and hardware evidence remain available under Engineering records.
+- Added the firmware Midnight palette, original six-dog SVG artwork, light mode, responsive tables, search and code-copy controls. The documentation footer and project notices credit Copyright 2026 Jascha Wanger (https://dx.pe).
+- Pinned Zensical 0.0.65 and its Python dependencies. The GitHub documentation workflow builds a static artifact on pushes, pull requests and manual dispatch; public hosting and a remote workflow run remain pending.
+- Local strict clean build passed. Source coverage and sprite checks passed; all local links, assets and fragments passed across 38 generated HTML pages (including the accessible 404 page). The link checker also rejected controlled missing-page, missing-anchor and outside-site cases. New Python tools passed Ruff 0.13.1 lint/format checks; the repository diff passed whitespace checks.
+- Browser checks covered the Midnight home page, search results, guide navigation, light-mode switching and 390-pixel guide/table layout without document overflow. The existing emulator remains separate on port 8765; documentation is served on port 8000. No firmware or saved-state changes were made for this documentation work.
+
+## Coverage help and inference guards — 2026-09-23
+
+- Roadmap items 1–2 and the SSID frame-role prerequisite implemented; the catalogue remains 67 enabled rules / 19 categories. No saved-state format or radio callback changes.
+- All 15 CTest suites passed with AddressSanitizer, UndefinedBehaviorSanitizer and LeakSanitizer enabled (outside the ptrace sandbox). Added SSID boundary cases passed in a follow-up core run.
+- New regressions cover parsed beacons/probe responses versus probe requests, exact/prefix names, case/leading-junk/empty/embedded-NUL/32-byte SSIDs, duplicate/truncated IEs, all four transmitter U/L + I/G bit combinations, retained local-source SSID/payload evidence, and BLE company matching.
+- Coverage navigation tests exercise both orientations and all three themes, page cycling, Back preserving the book page, guarded tile buffers, unchanged progress, continuing reception and idle dim/wake behavior.
+- Native render inspection covered all five help pages and the Scent Book entry in landscape and portrait, including Midnight, Sunset and Daylight. Browser navigation verified Scent Book → Coverage at localhost:8765; intermittent browser-control timeouts limited the interactive pass, so the complete page/layout check used the same native renderer directly.
+- Generated signature/assets checks, passive-API/callback invariants and clang-format checks passed.
+- ESP32 release build passed using the pinned ESP-IDF 6.0.2 commit in the official `espressif/idf:v6.0.2` container (`sha256:0d8c9773d48a327233f9c1d7c654ff0bcf133ae24503ea2e97a57cfe02b8cb67`). Application: **1,288,432 bytes**, SHA-256 `a24290d8ecd957a7b4bea8dd50d145055544001ada1d819d3589db48403d8545`; 59% of the 3 MiB application partition remains free. Other firmware profiles were not rebuilt for this change.
+- Installed on the Hosyond on 2026-09-24 after SD eject confirmation: esptool hash verified, partition/NVS/PHY readback unchanged, and two boot-health samples with increasing Wi-Fi/BLE callbacks and no reported radio/save errors or observed panic/watchdog. See [installation receipt](HARDWARE.md#coverage-help-and-inference-guards-installed-2026-09-24). Physical UI/SD checks and controlled RF validation remain pending.
+
 ## Completion iteration — 2026-09-21 local / 2026-09-22 UTC
 
 - All four current ESP-IDF builds pass with SDK commit `7101770dc6db2667b3c477cc31365dd1acd6db4e`. Debug/test disable the main Wi-Fi IRAM optimization to retain instrumentation headroom.
@@ -127,7 +146,7 @@ Replaced Pine Trail with an original fenced dog park, trees, agility hoop, hydra
 
 ## Hosyond first hardware connection — 2026-09-22
 
-The Hosyond 4-inch board replaced the C3 on USB. ROM identity confirms ESP32-D0WD-V3 revision 3.1 with 4 MB flash. A complete original flash backup and checksum were retained locally; the current 1,195,552-byte release application was flashed and its written hash verified. The bootloader loaded the application and it reached SD initialization, which returned `0x107` (no usable SD card detected). Physical display appearance, calibration and first-run setup are awaiting user observation; RF accuracy, persistence, storage and soak acceptance are still open. See [hardware bring-up](HARDWARE.md#first-hosyond-usb-bring-up--2026-09-22) for hashes and restoration details.
+The Hosyond 4-inch board replaced the C3 on USB. ROM identity confirms ESP32-D0WD-V3 revision 3.1 with 4 MB flash. A complete original flash backup and checksum were retained locally; the current 1,195,552-byte release application was flashed and its written hash verified. The bootloader loaded the application and it reached SD initialization, which returned `0x107` (no usable SD card detected). Physical display appearance, calibration and first-run setup are awaiting user observation; RF accuracy, persistence, storage and soak acceptance are still open. See [hardware bring-up](HARDWARE.md#first-hosyond-usb-bring-up-2026-09-22) for hashes and restoration details.
 
 The user subsequently reported that the UI displayed with a white background and blue dogs. A first hardware correction disables panel inversion (`0x20`, replacing `0x21`). The corrected release application builds successfully; the user confirmed that the corrected colors look right. This application-only update preserves NVS/calibration.
 
@@ -465,3 +484,21 @@ Target View is 8,120 bytes (+8); Engine remains 26,000, State 1,816, two storage
 Installed after fresh safe-eject confirmation (UTC receipt `20260923-201443`): private 24 KiB NVS backup `hosyond-nvs-before-airtag-selection-id-20260923-201443.bin` validated all five record CRCs, Companion V2 with 17 / 64 used ignores, SCOUT and the Brass Collar. The identity key matches the previous backup. Compared with the pre-storage-correction backup, used entries increased from 16 to 17; this confirms an additional saved ignore, not which radio signal caused the user's recurring card.
 
 Only the 1,286,384-byte application at `0x10000` was flashed at 115200 baud, SHA-256 `27857be6757d59f174dc91fa78f2ccba8fd88f601ca29ecd9e0a308c11a3f421`. Esptool verified the written hash and completed its RTS hard reset. NVS, bootloader and partition table were not flashed; no post-reboot serial monitor was opened. On-board acceptance remains: matching local ID on the card/action menu, quiet subsequent scans for that ignored identity, and comparison of any returning alert's ID/status. SD remount and backup completion after this reboot remain to be observed.
+
+
+## Stable local emulator layout — 2026-09-24
+
+The browser lab places the firmware display in a stationary center area, with independently scrolling hound/display and sample/signal controls on either side. Screen shortcuts sit below the display. Automatic scrolling after samples, care previews, idle previews, Tag Watch and signal readings is removed. Narrow windows stack the controls below the device.
+
+At the normal 1280×720 browser viewport, measured canvas bounds and page scroll position remained identical after seven interaction groups: hunger, Flipper sample, category selection/send, saver preview, idle time advance, Tag Watch warning and signal/repeat controls. Lower controls were reached through the side panels without moving the center display. Responsive checks at 1024×768 and 390×844 found no horizontal page overflow; the temporary viewport override was reset. Browser error/warning logs were empty. A control inventory comparison preserves all 29 action buttons, 20 element IDs and 23 category options. JavaScript syntax and Git whitespace checks pass; the native simulator target rebuilt successfully and the local server responds on loopback port 8765. This change only edits the browser wrapper and documentation; no board update is needed.
+
+
+## Zensical site and browser lab — 2026-09-24
+
+The documentation now provides 38 navigable pages with Hound's Midnight theme and original dog artwork, preserving chronological evidence as engineering records. Five wrapper pages import their original sources. The canonical URL is `https://surveillancehound.dx.pe/`; the GitHub workflow builds the browser lab, checks native/browser parity, validates the site, and deploys the default branch through Pages.
+
+The browser lab compiles the shared synthetic C++ simulator and firmware UI with pinned Emscripten 6.0.10. Each lab uses its own Web Worker, WebAssembly instance and RAM-only state. Native builds retain OpenSSL and device builds retain PSA; the browser uses Web Crypto for the same hashes. No radio access, USB access, persistent browser state or SD writes are introduced.
+
+Validation passed: all 15 Debug host suites; 169 native/WebAssembly state and full RGB565 frame comparisons, including against the pre-refactor native worker; the same parity run and core/UI suites with ASan/UBSan/LeakSanitizer; Python/C++ formatting, static invariants and workflow lint; and a strict clean Zensical build with all 40 generated HTML pages checked for local links, assets and anchors. Browser checks exercised the embedded and full-window lab, hunger/meal and following-warning controls, and stable canvas bounds at 1440×900 without page movement. The session isolation test starts a second fresh WebAssembly instance.
+
+These are software and local-browser checks. They do not establish radio accuracy, device power/memory behavior or public DNS/TLS/deployment status. The separate hardware acceptance gates remain open.

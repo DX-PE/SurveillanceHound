@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "assets_generated.h"
+#include "scent_guide.hpp"
 #include "signatures_generated.h"
 #include "state.hpp"
 #include "ui.hpp"
@@ -238,7 +239,67 @@ void care_tests() {
             }
         }
 }
+void coverage_tests() {
+    for (bool portrait : {false, true})
+        for (uint8_t theme : {0, 1, 2}) {
+            Settings s;
+            s.onboarded = true;
+            s.portrait = portrait;
+            Pet dog;
+            ui::View v(s, dog);
+            v.look().theme = theme;
+            v.scanning = true;
+            v.screen = ui::Screen::ScentBook;
+            v.now = 1000;
+            auto frame = [&] {
+                std::vector<uint16_t> pixels(v.width() * v.height() + 2, 0xabcd);
+                for (int y = 0; y < v.height(); y += v.tile_rows())
+                    v.render(
+                        y, std::span(pixels).subspan(1 + y * v.width(), v.width() * v.tile_rows()));
+                CHECK(pixels.front() == 0xabcd && pixels.back() == 0xabcd);
+                return pixels;
+            };
+            for (int book_page : {0, 3}) {
+                v.book_page = book_page;
+                frame();
+                v.tap(30, v.height() - 26);
+                CHECK(v.screen == ui::Screen::Coverage && v.coverage_page == 0);
+                const auto first = frame();
+                for (size_t page = 0; page < std::size(ui::coverage_guide); ++page) {
+                    CHECK(v.coverage_page == int(page));
+                    const auto pixels = frame();
+                    if (page)
+                        CHECK(pixels != first);
+                    v.tap(v.width() - 30, v.height() - 65);
+                }
+                CHECK(v.coverage_page == 0); // Last page wraps to the beginning.
+                v.tap(30, v.height() - 65);
+                CHECK(v.screen == ui::Screen::ScentBook && v.book_page == book_page);
+            }
+            CHECK(v.listening() && !v.requests);
+            CHECK(v.collection().discoveries() == 0 && v.collection().ignored_count() == 0);
+            CHECK(dog.meals == 0 && dog.xp == 0 && dog.fullness == 70 && dog.mood == 70);
+            v.tap(30, v.height() - 26);
+            // Reading help must not continually wake the display or stop reception.
+            v.now += 120000;
+            frame();
+            v.update_display();
+            CHECK(v.display_mode == ui::DisplayMode::Dim && v.listening());
+            v.tap(v.width() - 30, v.height() - 65);
+            CHECK(v.display_mode == ui::DisplayMode::Active && v.coverage_page == 0);
+            v.tap(v.width() - 30, v.height() - 65);
+            CHECK(v.coverage_page == 1);
+            Detection d{};
+            d.category = Category::SAMSUNG_TAG;
+            d.score = 60;
+            d.last_ms = v.now;
+            v.event(d);
+            CHECK(v.screen == ui::Screen::Coverage && v.listening());
+            CHECK(v.collection().discoveries() == 1);
+        }
+}
 int main() {
+    coverage_tests();
     care_tests();
     export_feedback_tests();
     eject_feedback_tests();

@@ -39,11 +39,14 @@ bool matches(const Rule &r, const Observation &o) {
     std::string_view ssid(reinterpret_cast<const char *>(o.ssid.data()), o.ssid_len);
     switch (r.kind) {
     case Kind::Oui:
-        return o.radio == Radio::Wifi && hex_prefix(v, o.address);
+        // Only globally administered individual transmitter addresses support
+        // manufacturer inference. Payload OUIs/CIDs are a separate evidence kind.
+        return o.radio == Radio::Wifi && !(o.address[0] & 0x03) && hex_prefix(v, o.address);
     case Kind::SsidExact:
-        return o.radio == Radio::Wifi && ssid == v;
+        // Probe requests name a network sought by a client, not one it hosts.
+        return o.radio == Radio::Wifi && (o.subtype == 8 || o.subtype == 5) && ssid == v;
     case Kind::SsidPrefix:
-        return o.radio == Radio::Wifi && ssid.starts_with(v);
+        return o.radio == Radio::Wifi && (o.subtype == 8 || o.subtype == 5) && ssid.starts_with(v);
     case Kind::NameExact:
         return o.radio == Radio::Ble && name == v;
     case Kind::NamePrefix:
