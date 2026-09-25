@@ -19,7 +19,7 @@ Install Surveillance Hound directly from your browser. Connect the supported boa
 
 ## Before you connect
 
-1. Use a desktop browser with Web Serial support, such as Chrome or Edge, on **HTTPS or localhost**.
+1. Use a desktop browser with Web Serial support, such as Chrome or Edge, on **HTTPS or localhost**. On Linux, check the [Snap browser note](#linux-snap-browsers) if the port chooser is empty.
 2. Check the board model above. This image is not for ESP32-C3, ESP32-S3, or other ESP32 display boards. The installer checks the chip family; it cannot identify your display or board wiring.
 3. Close serial monitors and other programs using the board. Use a USB **data** cable and keep it connected throughout installation.
 4. If Hound is already running with a card, choose **Settings → Data → Eject SD** and wait for **SAFE TO REMOVE** before proceeding.
@@ -70,6 +70,23 @@ For a source build or a different development profile, use [Build firmware](BUIL
 - **Cannot connect:** follow the board's bootloader procedure, then retry. Do not disconnect during an erase or write.
 - **Unsupported chip:** check the exact board model. Do not flash this image onto a different board just because it also uses an ESP32.
 - **Installer fails to load:** allow the pinned ESP Web Tools module from jsDelivr or use the release's manual instructions. Release downloads remain available without the browser installer.
+
+### Linux Snap browsers
+
+Snap-installed browsers, including Chromium, can show an **empty port chooser even when Linux detects the board**. Snap hardware permissions are separate from your user's serial-device permissions; being in the `dialout` group alone may not be enough.
+
+The simplest workaround is to use **Google Chrome installed from Google's native `.deb` or `.rpm` package** and reopen this installer there. The supported board may appear as **USB Serial**, **CH340**, or `/dev/ttyUSB0`. If you prefer to keep using a Snap browser, its serial access needs to be configured through [Snap's serial-port interface](https://snapcraft.io/docs/reference/interfaces/serial-port-interface/) and, where needed, [USB hotplug support](https://snapcraft.io/docs/explanation/how-snaps-work/hotplug-support/).
+
+### Linux Chrome opens a blank window
+
+A blank Chrome window can be a separate graphics issue on Wayland/NVIDIA desktops. The following launch workaround was tested on Hyprland with NVIDIA: close all Google Chrome windows, then run this in a terminal:
+
+```sh
+google-chrome-stable --ozone-platform=x11 --disable-gpu \
+  'https://surveillancehound.dx.pe/flash/'
+```
+
+This selects the X11 backend and disables GPU acceleration for that launch; it does not permanently change Chrome's settings. See [Chromium's platform documentation](https://chromium.googlesource.com/chromium/src/+/main/docs/ozone_overview.md). Once the page renders, use **Connect and install** to select the board.
 
 ## Firmware verification
 
