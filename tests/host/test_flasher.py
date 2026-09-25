@@ -23,7 +23,15 @@ class FlasherTests(unittest.TestCase):
         self.assertEqual(len(manifest["builds"]), 1)
         self.assertEqual(manifest["builds"][0]["chipFamily"], "ESP32")
         self.assertEqual(
-            manifest["builds"][0]["parts"], [{"path": release["filename"], "offset": 0}]
+            manifest["builds"][0]["parts"],
+            [
+                {
+                    "path": release["filename"],
+                    "offset": 0,
+                    "size": release["size"],
+                    "sha256": release["sha256"],
+                }
+            ],
         )
         self.assertIs(manifest["new_install_prompt_erase"], False)
         self.assertEqual(manifest["new_install_improv_wait_time"], 0)

@@ -252,3 +252,12 @@ A private pre-update backup of `0x8000–0xffff` includes the partition table, N
 The board hard-reset into the new image. A 45-second serial capture, opened without asserting another reset, received health reports at uptime 5 and 35 seconds. Current heap was 81,328 then 80,820 bytes; minimum 74,068; largest free block 73,728. Wi-Fi callbacks increased 167 → 1,162 and BLE callbacks 133 → 1,419, with zero reported radio/save errors and no observed panic, watchdog or brownout. Aggregate drops rose 116 → 1,083 in uncontrolled ambient traffic; this is not a calibrated loss measurement or long-term acceptance test. Travel Watch was off after reboot and must be manually armed again.
 
 Physical Coverage navigation, restored appearance, SD startup completion and resumed writes still require user observation. No card format, manual SD-file changes or controlled RF validation was performed during installation.
+
+
+## Browser factory-install recovery — 2026-09-24
+
+A new Hosyond E32R40T (ESP32-D0WD-V3 revision 3.1, 4 MB flash, CH340 USB, no SD card) remained completely dark after the user reported **Installation complete** and reconnected USB. Boot logs showed `invalid segment length 0xffffffff` and no bootable factory application. Readback matched the released factory image up to offset `0xf0000` (960 KiB); the remainder was erased. The release download itself matched its pinned SHA-256. The exact reason for the interrupted transfer has not been established; completion without checking flash contents was an installer defect.
+
+Recovery used the unchanged alpha.1 factory image: 1,353,968 bytes, SHA-256 `1b6a98bfac9509b103417d63a970310cb0cbe05c962585e6f02b48118cc06ed7`. A direct serial test of esptool-js 0.7.0 wrote the complete image at 115200 baud and verified device MD5 `cb1252ab3cf12989b6b1ee9dcb3e3044`. After reset, all six application segments loaded and the Hound health report appeared with 145,524 bytes free heap. The missing-card initialization message is expected with no SD inserted. Private raw readback and serial logs remain outside the repository.
+
+The web integration now verifies downloaded size/SHA-256 before erase and the full device checksum after writing. State-machine tests reject bad downloads, incomplete writes and lost serial connections without a success event. The direct serial recovery is not a browser end-to-end test; a repeat installation through the published page and physical display confirmation remain acceptance checks.

@@ -42,7 +42,14 @@ def manifest_for(release):
         "builds": [
             {
                 "chipFamily": release["chip"],
-                "parts": [{"path": release["filename"], "offset": release["offset"]}],
+                "parts": [
+                    {
+                        "path": release["filename"],
+                        "offset": release["offset"],
+                        "size": release["size"],
+                        "sha256": release["sha256"],
+                    }
+                ],
             }
         ],
     }

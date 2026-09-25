@@ -5,7 +5,7 @@ The site uses **Zensical 0.0.65** with a pinned Python toolchain in `requirement
 
 ## Install and preview
 
-Use Python 3.12 (the CI version), or a compatible newer Python:
+Use Python 3.12 and Node.js 22 (the CI versions), or compatible newer versions:
 
 ```sh
 python3 -m venv .venv-docs
@@ -13,6 +13,8 @@ python3 -m venv .venv-docs
 python -m pip install -r requirements-docs.txt
 python tools/build_web.py --docker
 python tools/build_flasher.py
+npm ci --prefix tools/flasher --ignore-scripts
+npm run build --prefix tools/flasher
 zensical serve
 ```
 
@@ -25,6 +27,9 @@ Open <http://127.0.0.1:8000/lab/> for the embedded lab or <http://127.0.0.1:8000
 ```sh
 python3 tools/build_web.py --docker
 python3 tools/build_flasher.py
+npm ci --prefix tools/flasher --ignore-scripts
+npm test --prefix tools/flasher
+npm run build --prefix tools/flasher
 python3 tools/docs_assets.py --check
 python3 tools/check_docs.py
 zensical build --clean --strict
@@ -58,9 +63,13 @@ Tests cover meals, pause/resume, Ignore, Watch, idle dim/saver/off, all sample c
 
 Publish and verify the release first, then update the pinned metadata for a new version. Do not use a moving `latest` URL. Keep `docs/flash.md` and README release links in sync. The manifest accepts only the ESP32 family and selects a full factory image at offset zero. It disables Improv Wi-Fi setup and optional erase prompts; the page explicitly explains the reset and requires board/data acknowledgement before enabling USB connection. Chip matching cannot identify the display board model.
 
-The page loads the pinned ESP Web Tools 10.4.0 module from jsDelivr with entry-module SHA-384 integrity verification. Upstream module chunks load from the same pinned CDN package. Only the flasher page loads this dependency. Firmware itself is served from the documentation origin, avoiding GitHub release-download CORS requirements. If Web Serial, a secure context or the installer is unavailable, manual release downloads remain visible. This feature does not change the passive firmware or request a USB port on page load.
+The page loads a self-hosted ESP Web Tools 10.4.0 bundle built with esptool-js 0.7.0. `tools/flasher/package-lock.json` pins dependencies; `npm ci --ignore-scripts` installs them and `npm run build` stages ignored `docs/flasher-vendor/` assets with full dependency license notices. Material Web is held at 2.2.0 for the upstream component imports. Only the flasher page loads this dependency.
 
-Run `python -m unittest discover -s tests/host -p test_flasher.py`, `node --test tools/test_flasher.mjs`, and the final asset check when changing installation metadata. In a browser, check acknowledgement gating, manual fallback, layout and external links without opening or flashing a board unless hardware testing is intended.
+The integration adds SHA-256 and size verification of the downloaded bytes before erasing, then requests the device MD5 over the complete written image before the upstream success state. MD5 is the bootloader transfer-integrity check, not the release authenticity mechanism. A mismatch or serial error follows the installation error path. A source hash guard makes the build fail if the patched upstream flash routine changes; review its error and completion paths before updating the pin. Tests exercise that actual upstream state machine with simulated serial I/O, including a write that returns successfully but has incomplete flash contents.
+
+Firmware itself is served from the documentation origin, avoiding GitHub release-download CORS requirements. If Web Serial, a secure context or the installer is unavailable, manual release downloads remain visible. This feature does not change the passive firmware or request a USB port on page load.
+
+Run `python -m unittest discover -s tests/host -p test_flasher.py`, `node --test tools/test_flasher.mjs`, `npm test --prefix tools/flasher`, and the final asset check when changing installation metadata or verification code. In a browser, check acknowledgement gating, manual fallback, layout and external links without opening or flashing a board unless hardware testing is intended.
 
 ## Where to edit
 
@@ -70,6 +79,7 @@ Run `python -m unittest discover -s tests/host -p test_flasher.py`, `node --test
 | Site title, navigation and features | `zensical.toml` |
 | Theme and responsive tables | `docs/stylesheets/hound.css` |
 | Browser firmware page and controller | `docs/flash.md`, `docs/javascripts/flasher.js` |
+| Verified installer bundle and tests | `tools/flasher/` |
 | Released firmware pin and staging | `tools/firmware-release.json`, `tools/build_flasher.py` |
 | External links in new tabs | `docs/javascripts/external-links.js` |
 | Accessible missing-page template | `docs-overrides/404.html` |
@@ -91,7 +101,7 @@ python3 tools/docs_assets.py
 ## GitHub workflow
 
 
-`.github/workflows/docs.yml` builds the browser lab, stages checksum-verified released firmware for the flasher, checks native/browser parity, builds the documentation strictly, validates the resulting site, and uploads one `hound-docs` artifact on pushes, pull requests and manual dispatch.
+`.github/workflows/docs.yml` builds the browser lab and verified installer, stages checksum-verified released firmware for the flasher, checks native/browser parity, builds the documentation strictly, validates the resulting site, and uploads one `hound-docs` artifact on pushes, pull requests and manual dispatch.
 
 Pushes to the default branch of [DX-PE/SurveillanceHound](https://github.com/DX-PE/SurveillanceHound) publish the checked artifact to GitHub Pages. Pull requests only build and test. The deployment job uses the `github-pages` environment and narrowly scoped Pages/OIDC permissions.
 

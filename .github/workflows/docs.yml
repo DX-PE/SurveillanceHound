@@ -33,6 +33,11 @@ jobs:
           node-version: '22'
       - name: Build browser lab
         run: python tools/build_web.py --docker
+      - name: Build verified browser installer
+        run: |
+          npm ci --prefix tools/flasher --ignore-scripts --no-audit --no-fund
+          npm test --prefix tools/flasher
+          npm run build --prefix tools/flasher
       - name: Stage verified release firmware
         run: |
           python tools/build_flasher.py

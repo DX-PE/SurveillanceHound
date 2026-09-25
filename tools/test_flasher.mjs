@@ -7,7 +7,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../docs/javascripts/flasher.js', import.meta.url), 'utf8')
-  .replace('import.meta.url', JSON.stringify('https://example.invalid/project/javascripts/flasher.js'));
+  .replaceAll('import.meta.url', JSON.stringify('https://example.invalid/project/javascripts/flasher.js'));
 
 async function run(options = {}) {
   const nodes = new Map();
@@ -18,13 +18,12 @@ async function run(options = {}) {
   const requested = [];
   let serialRequests = 0;
   let scripts = 0;
-  const release = {version: '0.1.0-alpha.1', chip: 'ESP32', offset: 0, filename: 'factory.bin'};
+  const release = {version: '0.1.0-alpha.1', chip: 'ESP32', offset: 0, filename: 'factory.bin', size: 1353968, sha256: 'a'.repeat(64)};
   const manifest = {version: release.version, new_install_prompt_erase: false, new_install_improv_wait_time: 0,
-    builds: [{chipFamily: options.wrongChip ? 'ESP32-C3' : 'ESP32', parts: [{path: 'factory.bin', offset: 0}]}]};
+    builds: [{chipFamily: options.wrongChip ? 'ESP32-C3' : 'ESP32', parts: [{path: 'factory.bin', offset: 0, size: release.size, sha256: options.wrongHash ? 'b'.repeat(64) : release.sha256}]}]};
   nodes.get('#hound-installer').append = script => {
     scripts++;
-    assert.equal(script.src, 'https://cdn.jsdelivr.net/npm/esp-web-tools@10.4.0/dist/web/install-button.js');
-    assert.match(script.integrity, /^sha384-/);
+    assert.equal(script.src, 'https://example.invalid/project/flasher-vendor/install-button.js');
     queueMicrotask(() => options.loadFails ? script.onerror() : script.onload());
   };
   vm.runInNewContext(source, {
@@ -56,7 +55,7 @@ test('unsupported and insecure browsers retain fallback without downloads or USB
 });
 
 test('missing metadata, wrong chip, and failed module load leave installation disabled', async () => {
-  for (const options of [{missingFiles: true}, {wrongChip: true}, {loadFails: true}]) {
+  for (const options of [{missingFiles: true}, {wrongChip: true}, {wrongHash: true}, {loadFails: true}]) {
     const result = await run(options);
     assert.equal(result.serialRequests, 0);
     assert.equal(result.nodes.get('#hound-connect').disabled, true);

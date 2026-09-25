@@ -22,7 +22,10 @@ No third-party detector code, assets or fixtures are incorporated. No external d
 | Zensical | 0.0.65; documentation dependencies in requirements-docs.txt | MIT; upstream dependencies retain their notices | Static documentation build only; not firmware |
 | Emscripten / LLVM browser runtime | 6.0.10; compiler image digest in tools/build_web.py | Emscripten MIT / University of Illinois; LLVM Apache-2.0 WITH LLVM-exception and retained upstream terms | Browser simulator only; generated JS includes Emscripten attribution |
 | musl / libc++ / libc++abi / compiler-rt / libunwind | Bundled with pinned Emscripten | Upstream license texts copied into lab-app/LICENSES.txt | WebAssembly runtime; not ESP32 firmware |
-| ESP Web Tools | 10.4.0, pinned CDN entry module with SHA-384 integrity | Apache-2.0; upstream bundle retains dependency notices | Browser USB installer only, loaded from jsDelivr; not firmware or part of the passive radio runtime |
+| ESP Web Tools / esptool-js | 10.4.0 / 0.7.0, self-hosted; exact dependency lock in tools/flasher/package-lock.json | Apache-2.0; modified integration adds download and complete-flash verification; dependency notices in flasher-vendor/LICENSES.txt | Browser USB installer only; not firmware or part of the passive radio runtime |
+| Material Web / Lit / Improv serial SDK | 2.2.0 / 3.3.3 / 2.8.0; transitive versions in installer lock | Apache-2.0 / BSD-3-Clause / Apache-2.0; full notices copied during bundling | Installer dialog and connection UI |
+| SparkMD5 | 3.0.2 | MIT; bundled license retained | Browser comparison with the bootloader's MD5 transfer checksum |
+| esbuild | 0.25.12 | MIT | Installer bundling tool only |
 | Web Crypto | Browser implementation | Platform API; no crypto library bundled | Browser SHA-256 and HMAC bridge; native/device backends unchanged |
 | Google Fast Pair / Find Hub documentation | URLs and retrieval date in provenance | CC-BY-4.0; factual fields independently normalized | Signature facts |
 | STMicroelectronics beacon documentation | URL/date in provenance | Public factual protocol layout; no code/text copied | iBeacon facts |

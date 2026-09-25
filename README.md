@@ -25,6 +25,8 @@ python3 -m venv .venv-docs
 python -m pip install -r requirements-docs.txt
 python tools/build_web.py --docker
 python tools/build_flasher.py
+npm ci --prefix tools/flasher --ignore-scripts
+npm run build --prefix tools/flasher
 zensical serve
 ```
 

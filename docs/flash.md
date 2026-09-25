@@ -44,16 +44,16 @@ Install Surveillance Hound directly from your browser. Connect the supported boa
   <noscript><p>Enable JavaScript to use the browser installer, or download the release and use the manual installation instructions below.</p></noscript>
 </div>
 
-<script type="module" src="javascripts/flasher.js"></script>
+<script type="module" src="javascripts/flasher.js?v=2"></script>
 
 [Download release files](https://github.com/DX-PE/SurveillanceHound/releases/tag/v0.1.0-alpha.1){ .md-button }
 [Try the browser lab first](lab.md){ .md-button }
 
-The installer uses [ESP Web Tools](https://esphome.github.io/esp-web-tools/) 10.4.0, loaded from jsDelivr. Firmware is served from this documentation site and checked against the release SHA-256 during the site build. USB access begins only when you press **Connect and install** and select a port.
+The installer uses [ESP Web Tools](https://esphome.github.io/esp-web-tools/) 10.4.0 with esptool-js 0.7.0, hosted on this site. It verifies the firmware download before erasing and checks the complete image written to your board before reporting success. USB access begins only when you press **Connect and install** and select a port.
 
 ## After installation
 
-Wait for installation to finish, then reset or power-cycle the board if needed. Complete first-boot touch calibration, region/privacy settings and dog setup. The tested Hosyond uses **Panel inversion: Off**. See [Getting started](getting-started.md) for controls, SD setup and detection limits.
+Wait for **Installation complete**, then reset or power-cycle the board if needed. Keep the board connected while it writes and verifies the firmware. Complete first-boot touch calibration, region/privacy settings and dog setup. The tested Hosyond uses **Panel inversion: Off**. See [Getting started](getting-started.md) for controls, SD setup and detection limits.
 
 This is the initial **0.1.0-alpha.1 prerelease**. The device About screen reports `0.1.0`; the release package identifies the alpha. Controlled RF accuracy, power/durability testing and formal release acceptance remain open. Read [current status](STATUS.md) before relying on detections.
 
@@ -69,7 +69,9 @@ For a source build or a different development profile, use [Build firmware](BUIL
 - **Port busy or permission denied:** close other browser installers and serial monitors. On Linux, ensure your user has access to the serial device.
 - **Cannot connect:** follow the board's bootloader procedure, then retry. Do not disconnect during an erase or write.
 - **Unsupported chip:** check the exact board model. Do not flash this image onto a different board just because it also uses an ESP32.
-- **Installer fails to load:** allow the pinned ESP Web Tools module from jsDelivr or use the release's manual instructions. Release downloads remain available without the browser installer.
+- **Installer fails to load:** reload the page or use the release's manual instructions. Release downloads remain available without the browser installer.
+- **Verification failed:** keep the board connected, close the failed installation dialog, and retry. Try another data cable or USB port if it repeats.
+- **Screen stays dark after installing:** reload this page to get the current installer and reinstall. An earlier installer could report completion after a partial write; the current installer checks the entire written image before reporting success. If it still stays dark, use the serial log to diagnose startup.
 
 ### Linux Snap browsers
 
@@ -90,4 +92,4 @@ This selects the X11 backend and disables GPU acceleration for that launch; it d
 
 ## Firmware verification
 
-The [manifest](firmware/manifest.json) selects only the ESP32 factory image at offset zero. [Release metadata](firmware/release.json) records the source commit, image size and SHA-256. These files and the image are hosted together, so installation does not depend on cross-origin downloads from GitHub.
+The [manifest](firmware/manifest.json) selects only the ESP32 factory image at offset zero. [Release metadata](firmware/release.json) records the source commit, image size and SHA-256. These files and the image are hosted together, so installation does not depend on cross-origin downloads from GitHub. The browser checks the downloaded size and SHA-256, then compares a checksum of the complete image against the bytes written to flash. [Installer dependency licenses](flasher-vendor/LICENSES.txt) are included with the self-hosted bundle.

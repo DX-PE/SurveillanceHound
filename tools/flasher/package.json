@@ -1,0 +1,25 @@
+{
+  "name": "surveillance-hound-web-installer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test verify.test.mjs"
+  },
+  "dependencies": {
+    "esp-web-tools": "10.4.0",
+    "esptool-js": "0.7.0",
+    "spark-md5": "3.0.2"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  },
+  "overrides": {
+    "esp-web-tools": {
+      "esptool-js": "0.7.0",
+      "@material/web": "2.2.0"
+    }
+  }
+}

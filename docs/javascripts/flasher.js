@@ -40,8 +40,8 @@ async function initialize() {
   }
 
   const [releaseResponse, manifestResponse] = await Promise.all([
-    fetch(new URL('release.json', firmwareRoot), {signal: AbortSignal.timeout(15000)}),
-    fetch(new URL('manifest.json', firmwareRoot), {signal: AbortSignal.timeout(15000)})
+    fetch(new URL('release.json', firmwareRoot), {signal: AbortSignal.timeout(15000), cache: 'no-store'}),
+    fetch(new URL('manifest.json', firmwareRoot), {signal: AbortSignal.timeout(15000), cache: 'no-store'})
   ]);
   if (!releaseResponse.ok || !manifestResponse.ok) throw new Error('Release files unavailable');
   const release = await releaseResponse.json();
@@ -51,6 +51,9 @@ async function initialize() {
       manifest.version !== release.version || manifest.builds.length !== 1 ||
       build?.chipFamily !== 'ESP32' || build.parts.length !== 1 ||
       build.parts[0].path !== release.filename || build.parts[0].offset !== 0 ||
+      !Number.isSafeInteger(release.size) || release.size <= 0 ||
+      !/^[0-9a-f]{64}$/.test(release.sha256) ||
+      build.parts[0].size !== release.size || build.parts[0].sha256 !== release.sha256 ||
       manifest.new_install_prompt_erase !== false || manifest.new_install_improv_wait_time !== 0) {
     throw new Error('Release metadata does not match the installer');
   }
@@ -60,9 +63,7 @@ async function initialize() {
   await new Promise((resolve, reject) => {
     const script = document.createElement('script');
     script.type = 'module';
-    script.src = 'https://cdn.jsdelivr.net/npm/esp-web-tools@10.4.0/dist/web/install-button.js';
-    script.integrity = 'sha384-9XfyvAabgkISlB/Xb3OpshGKpZx0TOt5Mmu78SeiNU3so/p4o2s9m66vy6Utdnom';
-    script.crossOrigin = 'anonymous';
+    script.src = new URL('../flasher-vendor/install-button.js', import.meta.url).href;
     const timer = setTimeout(() => reject(new Error('Installer loading timed out')), 30000);
     script.onload = () => {
       clearTimeout(timer);

@@ -18,4 +18,6 @@ dependencies.lock
 site/
 docs/lab-app/
 docs/firmware/
+docs/flasher-vendor/
+node_modules/
 .cache/
